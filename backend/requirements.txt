@@ -1,0 +1,21 @@
+# Runtime dependencies (exact versions that the test-suite was run with).
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+sqlalchemy[asyncio]==2.1.2
+asyncpg==0.31.0
+alembic==1.20.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-telegram-bot==22.8
+httpx==0.28.1
+pytz==2026.4
+tzdata==2026.4
+web3==8.0.0
+bip-utils==2.12.2
+argon2-cffi==25.1.0
+pyjwt==2.15.1
+pyotp==2.10.0
+qrcode[pil]==8.2
+pillow==12.3.0
+anthropic==1.11.0
+cryptography==50.0.2

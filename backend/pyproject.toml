@@ -1,0 +1,31 @@
+[project]
+name = "qr-scan-bot"
+version = "1.0.0"
+description = "Anonymous ChatGPT-URL exchange platform: Telegram bot + FastAPI admin backend"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S"]
+ignore = [
+    "E501",   # long lines are handled by the formatter
+    "B008",   # FastAPI Depends() in defaults
+    "S101",   # asserts are fine (tests + invariants)
+    "S311",   # random is used for tie-breaking, not crypto
+    "UP042",  # keep str+Enum compat
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108"]

@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+# in-memory EVM + Vyper compiler: the blockchain tests deploy a real ERC-20 contract
+eth-tester[py-evm]==0.14.0b1
+py-evm==0.12.1b1
+vyper==0.4.3
+ruff==0.16.10
