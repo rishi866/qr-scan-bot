@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import texts
+from app import states, texts
 from app.config import get_settings
 from app.enums import DisputeResolution, DisputeStatus, SessionStatus, TxStatus
 from app.models import Dispute, TaskSession, User
@@ -21,8 +21,8 @@ from app.services import outbox, settings_service, settlement, users
 from app.services.settings_service import RuntimeSettings
 from app.timeutil import utcnow
 
-STATE_AWAITING_PROOF = "awaiting_proof"
-STATE_DISPUTE_NOTE = "dispute_note"
+STATE_AWAITING_PROOF = states.AWAITING_PROOF
+STATE_DISPUTE_NOTE = states.DISPUTE_NOTE
 SELLER_NOTE_TTL_SECONDS = 600
 
 

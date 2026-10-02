@@ -21,8 +21,6 @@ ADMIN_REJECT = "adm:rj"
 SLOT_TOGGLE = "sl:t"
 SLOT_DONE = "sl:done"
 SLOT_EDIT = "sl:edit"
-SLOT_ADD_MODE = "sl:addm"
-SLOT_REMOVE_MODE = "sl:rmm"
 READY = "rdy"
 BUSY = "bsy"
 
@@ -69,8 +67,9 @@ def admin_reject(user_id: int) -> str:
     return f"{ADMIN_REJECT}:{user_id}"
 
 
-def slot_toggle(start: int, end: int) -> str:
-    return f"{SLOT_TOGGLE}:{start}:{end}"
+def slot_toggle(start: int, end: int, mode: str = "a") -> str:
+    """``mode``: ``a`` all slots, ``p`` add-only list (/addslot), ``m`` remove-only list (/removeslot)."""
+    return f"{SLOT_TOGGLE}:{start}:{end}:{mode}"
 
 
 def ready(notification_id: int) -> str:

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # ── AI screenshot verification (optional) ──────────────────────────────
     anthropic_api_key: SecretStr = SecretStr("")
-    ai_model: str = "claude-sonnet-5-5"
+    ai_model: str = "claude-opus-5-5"  # any vision-capable Claude model id; cheaper options: claude-sonnet-5-5, claude-haiku-4-5
 
     # ── validators ─────────────────────────────────────────────────────────
     @field_validator("admin_telegram_ids", mode="before")

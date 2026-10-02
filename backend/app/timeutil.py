@@ -146,6 +146,20 @@ def timezones_for_country(code: str) -> list[str]:
         return []
 
 
+# pytz's names are terse / inverted for a few countries; show the names people actually use
+_NAME_OVERRIDES = {
+    "GB": "United Kingdom",
+    "KP": "North Korea",
+    "KR": "South Korea",
+    "CD": "DR Congo",
+    "CG": "Republic of the Congo",
+    "MM": "Myanmar",
+    "SZ": "Eswatini",
+    "WS": "Samoa",
+    "AS": "American Samoa",
+}
+
+
 def is_valid_country(code: str | None) -> bool:
     return bool(code) and code.upper() in pytz.country_names
 
@@ -153,7 +167,8 @@ def is_valid_country(code: str | None) -> bool:
 def country_name(code: str | None) -> str:
     if not code:
         return "-"
-    return pytz.country_names.get(code.upper(), code.upper())
+    code = code.upper()
+    return _NAME_OVERRIDES.get(code) or pytz.country_names.get(code, code)
 
 
 def country_flag(code: str | None) -> str:
@@ -168,6 +183,7 @@ def _country_index() -> dict[str, str]:
     for code, name in pytz.country_names.items():
         index[code.lower()] = code
         index[_norm(name)] = code
+        index[_norm(country_name(code))] = code
     # common short names / alternates
     extra = {
         "uk": "GB",
@@ -205,7 +221,7 @@ def find_countries(query: str, limit: int = 5) -> list[str]:
     if exact:
         return [exact]
     names = [k for k in index if len(k) > 2]
-    hits = difflib.get_close_matches(_norm(query), names, n=limit * 2, cutoff=0.6)
+    hits = difflib.get_close_matches(_norm(query), names, n=limit * 2, cutoff=0.8)
     out: list[str] = []
     for hit in hits:
         code = index[hit]

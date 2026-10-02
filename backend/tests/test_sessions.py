@@ -9,7 +9,6 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
-from app import db as app_db
 from app.db import session_scope
 from app.enums import SessionStatus, SlotResponse
 from app.models import LedgerEntry, Outbox, SlotNotification, TaskSession, TransactionHistory

@@ -14,9 +14,9 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from app.chain import binance as binance_mod
+from app.chain import payout as payout_mod
 from app.chain.bsc import ChainError, Receipt, TransferLog, is_valid_address
 from app.chain.hd import HDError, HDWallet, generate_mnemonic
-from app.chain import payout as payout_mod
 from app.chain.payout import run_payouts
 from app.chain.sweeper import sweep
 from app.chain.watcher import get_cursor, scan_deposits, set_cursor
