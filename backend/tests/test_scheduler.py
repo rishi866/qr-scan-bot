@@ -13,7 +13,7 @@ from app.bot import delivery
 from app.config import get_settings
 from app.db import session_scope
 from app.enums import DisputeStatus, SessionStatus
-from app.models import Dispute, Outbox, SlotNotification, User
+from app.models import Dispute, Outbox, ScannerSlot, SlotNotification, User
 from app.services import disputes, outbox, scheduler, sessions, wallet
 from app.services import users as users_svc
 from tests.factories import make_scanner, make_user
@@ -303,3 +303,32 @@ async def test_admin_notifications_go_to_every_configured_admin(db):
     assert await outbox.notify_admins(db, "hello admins", dedupe_key="x") == 0  # deduped per admin
     rows = (await db.execute(select(Outbox.chat_id).order_by(Outbox.chat_id))).scalars().all()
     assert rows == [9001, 9002]
+
+
+# ── housekeeping ────────────────────────────────────────────────────────────
+
+
+async def test_housekeeping_only_removes_old_finished_non_broadcast_messages_and_old_reminders(db):
+    scanner = await make_scanner(db, alias="user1", slots=[(8, 10)])
+    now = at(2026, 10, 2, 12)
+    old, recent = now - dt.timedelta(days=45), now - dt.timedelta(days=3)
+
+    async def row(key: str, status: str, created: dt.datetime, broadcast_id: int | None = None) -> None:
+        db.add(Outbox(chat_id=1, body=key, status=status, dedupe_key=key, created_at=created, broadcast_id=broadcast_id))
+
+    await row("old-sent", "sent", old)
+    await row("old-failed", "failed", old)
+    await row("old-queued", "queued", old)  # still waiting for delivery: never deleted
+    await row("old-broadcast", "sent", old, broadcast_id=7)  # the broadcast history counts these
+    await row("recent-sent", "sent", recent)
+    slot = (await db.execute(select(ScannerSlot))).scalars().first()
+    db.add(SlotNotification(slot_id=slot.id, user_id=scanner.user_id, occurrence_start=old, occurrence_end=old + dt.timedelta(hours=2)))
+    db.add(SlotNotification(slot_id=slot.id, user_id=scanner.user_id, occurrence_start=recent, occurrence_end=recent + dt.timedelta(hours=2)))
+    await db.commit()
+
+    assert await scheduler.tick_housekeeping(now) == {"outbox": 2, "slot_reminders": 1}
+    left = {o.dedupe_key for o in (await db.execute(select(Outbox))).scalars()}
+    assert left == {"old-queued", "old-broadcast", "recent-sent"}
+    assert len((await db.execute(select(SlotNotification))).scalars().all()) == 1
+
+    assert await scheduler.tick_housekeeping(now) == {"outbox": 0, "slot_reminders": 0}  # idempotent

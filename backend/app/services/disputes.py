@@ -156,6 +156,7 @@ async def apply_ai_result(db: AsyncSession, dispute_id: int, verdict: dict[str, 
 
     Returns ``"auto_pay"``, ``"auto_refund"`` or ``"escalated"``.
     """
+    await _lock_session_of(db, dispute_id)  # lock order session -> dispute, same as resolve() / submit_proof()
     dispute = await _lock_dispute(db, dispute_id)
     if dispute.status != DisputeStatus.PENDING_REVIEW.value:
         return "escalated"

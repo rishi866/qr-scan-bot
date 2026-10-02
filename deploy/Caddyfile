@@ -39,14 +39,12 @@
 		file_server
 	}
 
+	# custom error page: /404.html exists in the export (other codes fall back to Caddy's plain response)
 	handle_errors {
-		@notfound expression {err.status_code} == 404
-		handle @notfound {
-			rewrite * /404.html
-			header X-Frame-Options DENY
-			file_server {
-				root /srv/panel
-			}
+		header X-Frame-Options DENY
+		rewrite * /{err.status_code}.html
+		file_server {
+			root /srv/panel
 		}
 	}
 }

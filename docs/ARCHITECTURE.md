@@ -112,7 +112,7 @@ Telegram does not give bots a user's time zone or country. The bot opens the **M
 ## 8. Messaging (outbox)
 
 Every message to another person is first written to `outbox` in the **same transaction** as the change that caused it (with a dedupe key), and delivered by the worker: leased rows, retry with back-off, rate limiting (~25 messages/s),
-`Forbidden` → the user is marked `bot_blocked`, HTML parse errors → resent as plain text, link previews off. A crash between "state changed" and "message sent" is therefore impossible to lose.
+`Forbidden` → the user is marked `bot_blocked`, HTML parse errors → resent as plain text, link previews off. A crash between "state changed" and "message sent" is therefore impossible to lose. A housekeeping loop (every 6 h) deletes delivered / given-up messages and old slot reminders after 30 days so the table stays small; broadcast deliveries, money, tasks, disputes and the audit log are never deleted.
 
 ## 9. Security model
 
@@ -128,7 +128,7 @@ Every message to another person is first written to `outbox` in the **same trans
 
 ## 10. Testing
 
-`backend/tests` (225 tests, real PostgreSQL): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
+`backend/tests` (226 tests, real PostgreSQL): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
 a **simulated Telegram** that runs the real `python-telegram-bot` application with an injected transport for end-to-end journeys; API tests for every endpoint including authentication, 2FA, CSRF and lockout.
 The panel is type-checked and built in CI; its screens and write flows were verified manually in a headless browser (Playwright) against seeded demo data, but there is no automated browser test suite in the repository.
 

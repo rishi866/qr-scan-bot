@@ -13,14 +13,14 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app import callbacks, states, texts, timeutil
 from app.config import get_settings
 from app.db import session_scope
-from app.enums import Role, UserStatus
-from app.models import Dispute, ScannerSlot, SlotNotification, User
+from app.enums import OutboxStatus, Role, UserStatus
+from app.models import Dispute, Outbox, ScannerSlot, SlotNotification, User
 from app.services import disputes, outbox, sessions, settings_service
 from app.timeutil import ensure_utc, utcnow
 
@@ -54,6 +54,29 @@ async def tick_sessions(now: dt.datetime | None = None) -> dict[str, int]:
         "prompted": await _each(due["prompt"], lambda db, i: sessions.process_prompt(db, i, now), "prompt"),
         "auto_confirmed": await _each(due["autoconfirm"], lambda db, i: sessions.process_autoconfirm(db, i, now), "autoconfirm"),
     }
+
+
+# ── housekeeping ────────────────────────────────────────────────────────────
+
+RETENTION_DAYS = 30
+
+
+async def tick_housekeeping(now: dt.datetime | None = None, days: int = RETENTION_DAYS) -> dict[str, int]:
+    """Keep the busiest tables bounded: delivered / given-up messages and old slot reminders are not needed after a month.
+
+    Broadcast deliveries are kept (the broadcast history counts them); money, tasks, disputes and the audit log are never touched.
+    """
+    cutoff = ensure_utc(now or utcnow()) - dt.timedelta(days=days)
+    async with session_scope() as db:
+        messages = await db.execute(
+            delete(Outbox).where(
+                Outbox.status.in_([OutboxStatus.SENT.value, OutboxStatus.FAILED.value]),
+                Outbox.created_at < cutoff,
+                Outbox.broadcast_id.is_(None),
+            )
+        )
+        reminders = await db.execute(delete(SlotNotification).where(SlotNotification.occurrence_end < cutoff))
+    return {"outbox": messages.rowcount or 0, "slot_reminders": reminders.rowcount or 0}
 
 
 # ── disputes ────────────────────────────────────────────────────────────────

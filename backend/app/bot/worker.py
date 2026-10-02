@@ -91,6 +91,7 @@ async def run_worker(bot: Bot) -> None:
         _loop("disputes", 15.0, scheduler.tick_disputes),
         _loop("slot-reminders", 20.0, scheduler.tick_slot_notifications),
         _loop("states", 10.0, scheduler.tick_states),
+        _loop("housekeeping", 6 * 3600.0, scheduler.tick_housekeeping),
     ]
 
     from app.services import ai_verify  # local import: optional dependency on the anthropic SDK
