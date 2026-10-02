@@ -16,7 +16,7 @@ You can copy parts of this into your own welcome post. The bot speaks English on
 
 1. Send **/start**, choose your role.
 2. **Time zone.** Tap **📍 Detect my time zone** - a small window reads your device's time zone (never your location) and sends it back. Confirm the country it shows.
-   If that is not possible, just type your country name (e.g. *India*), and pick your time zone if the country has several.
+   If that is not possible, tap **✏️ Choose country manually** and type your country name (e.g. *India*); pick your time zone if the country has several.
 3. Your request goes to the admin. You get a message when it is decided:
    * **✅ Approved. Use /send.** (sender) or **✅ Approved. Choose your slots.** (scanner)
    * **❌ Rejected. Contact admin.** - get in touch with the support contact shown.

@@ -50,7 +50,7 @@
   </div>
 
   <button id="confirm" type="button" disabled>Yes, use this time zone</button>
-  <p class="note" id="note">If it is wrong, close this window and choose &ldquo;Enter manually&rdquo; in the chat.</p>
+  <p class="note" id="note">If it is wrong, close this window and tap &ldquo;Choose country manually&rdquo; in the chat.</p>
 </main>
 
 <script>
@@ -84,7 +84,7 @@
 
   if (!zone) {
     zoneEl.textContent = "Could not detect";
-    noteEl.textContent = "Close this window and choose “Enter manually” in the chat.";
+    noteEl.textContent = "Close this window and tap “Choose country manually” in the chat.";
     noteEl.className = "note error";
   } else {
     zoneEl.textContent = zone.replace(/_/g, " ");
@@ -107,7 +107,7 @@
       tg.sendData(JSON.stringify({ tz: zone, langs: langs }));
     } catch (e) {
       button.disabled = false;
-      noteEl.textContent = "Could not send the time zone. Please choose “Enter manually” in the chat.";
+      noteEl.textContent = "Could not send the time zone. Please tap “Choose country manually” in the chat.";
       noteEl.className = "note error";
     }
   });
