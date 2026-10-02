@@ -254,3 +254,88 @@ def test_restore_refuses_a_shared_database_without_a_schema(fresh):
     dump = next(fresh.backups.glob("db-*.sql.gz"))
     done = fresh.run("restore.sh", str(dump), stdin="RESTORE\n", extra={"DB_SCHEMA": ""})
     assert done.returncode != 0 and "DB_SCHEMA is not set" in done.stdout
+
+
+# ── install_vps.sh: the part that writes deploy/.env (extracted verbatim; the rest needs root, apt and Docker) ──
+
+TOKEN = "123456789:AAbbccddeeffgghhiijjkkllmmnnooppqqrr"
+
+
+def installer_env_block() -> str:
+    source = (DEPLOY / "install_vps.sh").read_text()
+    start = source.index("get() {")
+    end = source.index("DOMAIN=$(get DOMAIN)") + len("DOMAIN=$(get DOMAIN)")
+    return 'set -euo pipefail\nsay() { printf "\\n==> %s\\n" "$*"; }\n' + source[start:end] + "\n"
+
+
+def run_installer_block(tmp: Path, answers: list[str], existing_env: str | None = None) -> tuple[subprocess.CompletedProcess[str], Path]:
+    work = tmp / "installer"
+    work.mkdir()
+    shutil.copy(DEPLOY / ".env.example", work / ".env.example")
+    if existing_env is not None:
+        (work / ".env").write_text(existing_env)
+    script = work / "block.sh"
+    script.write_text(installer_env_block())
+    done = subprocess.run(["bash", str(script)], cwd=work, input="".join(a + "\n" for a in answers), capture_output=True, text=True, timeout=60, check=False)
+    return done, work / ".env"
+
+
+def env_value(env_file: Path, key: str) -> str | None:
+    for line in env_file.read_text().splitlines():
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1]
+    return None
+
+
+def test_installer_stores_a_supabase_setup_without_a_database_container(tmp_path):
+    good = "postgresql://postgres.abcd:p%40ss@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
+    done, env = run_installer_block(
+        tmp_path,
+        ["admin.example.com", "ops@example.com", TOKEN, "111,222", "2", "postgresql://u:pa$$word@h.supabase.com:5432/postgres", good, ""],
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "that does not look right" in done.stdout  # a URL containing $ is refused (Compose would interpolate it) and asked for again
+    assert "WARNING: port 6543" in done.stdout  # the transaction pooler breaks prepared statements
+    assert env_value(env, "DATABASE_URL") == good  # stored exactly as typed, percent-encoding intact
+    assert env_value(env, "DB_SCHEMA") == "qrbot" and env_value(env, "DB_POOL_SIZE") == "3" and env_value(env, "DB_MAX_OVERFLOW") == "2"
+    assert env_value(env, "COMPOSE_PROFILES") is None and env_value(env, "POSTGRES_PASSWORD") is None  # no db container
+    assert re.fullmatch(r"[0-9a-f]{64}", env_value(env, "SECRET_KEY") or "")
+    assert env_value(env, "ADMIN_TELEGRAM_IDS") == "111,222"
+    assert (env.stat().st_mode & 0o777) == 0o600
+
+
+@pytest.mark.parametrize("choice", ["1", ""])  # an empty answer takes the default
+def test_installer_defaults_to_the_database_container_with_a_generated_password(tmp_path, choice):
+    done, env = run_installer_block(tmp_path, ["admin.example.com", "ops@example.com", TOKEN, "111", choice])
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert env_value(env, "COMPOSE_PROFILES") == "local-db"
+    assert re.fullmatch(r"[0-9a-f]{48}", env_value(env, "POSTGRES_PASSWORD") or "")
+    assert env_value(env, "DATABASE_URL") is None and env_value(env, "DB_SCHEMA") is None
+
+
+def test_installer_keeps_an_existing_env_and_refuses_one_without_any_database_setting(tmp_path):
+    base = f"DOMAIN=a.example.com\nACME_EMAIL=a@b.co\nTELEGRAM_BOT_TOKEN={TOKEN}\nADMIN_TELEGRAM_IDS=1\nSECRET_KEY=abc\n"
+    (tmp_path / "kept").mkdir()
+    done, env = run_installer_block(tmp_path / "kept", [], existing_env=base + "POSTGRES_PASSWORD=x\n")
+    assert done.returncode == 0 and "already exists" in done.stdout and env_value(env, "DOMAIN") == "a.example.com"
+    (tmp_path / "bare").mkdir()
+    done, _ = run_installer_block(tmp_path / "bare", [], existing_env=base)
+    assert done.returncode != 0 and "set POSTGRES_PASSWORD" in done.stdout
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is not installed")
+@pytest.mark.parametrize("choice", ["1", "2"])
+def test_what_the_installer_writes_is_accepted_by_docker_compose(tmp_path, choice):
+    answers = ["admin.example.com", "ops@example.com", TOKEN, "111", choice]
+    if choice == "2":
+        answers += ["postgresql://postgres.abcd:pw@aws-0-eu-west-1.pooler.supabase.com:5432/postgres", ""]
+    done, env = run_installer_block(tmp_path, answers)
+    assert done.returncode == 0, done.stdout + done.stderr
+    for name in ("docker-compose.yml",):
+        shutil.copy(DEPLOY / name, env.parent / name)
+    (env.parent / "certs").mkdir()
+    services = subprocess.run(["docker", "compose", "config", "--services"], cwd=env.parent, capture_output=True, text=True, timeout=60, check=False)
+    if services.returncode != 0 and "docker compose" in services.stderr.lower() and "not a docker command" in services.stderr.lower():
+        pytest.skip("the docker compose plugin is not installed")
+    assert services.returncode == 0, services.stderr
+    assert ("db" in services.stdout.split()) == (choice == "1")  # the container only in the container setup

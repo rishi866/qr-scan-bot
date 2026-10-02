@@ -2,13 +2,11 @@
 
 This guide takes you from "I have nothing" to a running bot and panel on **one VPS**. The same steps work on any Ubuntu server.
 
-> **Status of the deployment files.** What was verified by the authors: `docker compose config` accepts the compose file, the shell scripts pass `bash -n` and their
-> `.env` helper functions were exercised in isolation, and the backend image was *simulated* - a clean virtualenv with only `requirements.txt`, then `migrate`, the bot's handler registration and the API (production mode,
-> `/api/health`, docs disabled) started from only the files the Dockerfile copies. What was **not** possible: building the images (no Docker daemon was available) and running the stack on a real VPS with a real domain.
-> Do the first install on a throw-away server (or on the real one before any user exists) and read the output of every step.
->
-> The **Supabase mode** ([SUPABASE.md](SUPABASE.md)) was checked the same way (compose file in both modes and on three Compose versions, `bash -n`); `backup.sh` / `restore.sh` run in the test suite against a local PostgreSQL through a stand-in `docker` command, and the SQL,
-> URL handling and permission logic were run against it with simulated Supabase roles. It has **not** been run against a real Supabase project, with a Docker daemon, or from a VPS.
+> **Status of the deployment files.** On every push, CI (GitHub Actions) **builds both Docker images and runs the real stack** - once with the PostgreSQL container and once with a database outside the stack
+> (standing in for Supabase): migrations, API health, HTTPS through Caddy to the API and the database, creating the first admin, `backup.sh` and `restore.sh`. The compose file is also checked on three Compose versions
+> (that caught a real incompatibility), the shell scripts are syntax-checked, and `backup.sh` / `restore.sh` and the installer's `.env` prompts have their own tests.
+> **Not** done by the authors: an install on a real VPS with a real domain (DNS, Let's Encrypt certificate, `ufw`), a run with a real Telegram bot token, and - for the Supabase mode ([SUPABASE.md](SUPABASE.md)) - a real Supabase project
+> (its SQL, URL handling and permissions were run against a local PostgreSQL with simulated Supabase roles). Do the first install on a throw-away server (or on the real one before any user exists) and read the output of every step.
 
 ## 0. What you need
 

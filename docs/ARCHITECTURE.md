@@ -132,7 +132,7 @@ Every message to another person is first written to `outbox` in the **same trans
 
 ## 10. Testing
 
-`backend/tests` (258 tests, real PostgreSQL - the whole suite also runs inside a dedicated schema in CI): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
+`backend/tests` (264 tests, real PostgreSQL - the whole suite also runs inside a dedicated schema in CI): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
 a **simulated Telegram** that runs the real `python-telegram-bot` application with an injected transport for end-to-end journeys; API tests for every endpoint including authentication, 2FA, CSRF and lockout.
 The panel is type-checked and built in CI; its screens and write flows were verified manually in a headless browser (Playwright) against seeded demo data, but there is no automated browser test suite in the repository.
 
@@ -142,7 +142,7 @@ The panel is type-checked and built in CI; its screens and write flows were veri
 * **The AI check** (Anthropic API) is optional and was exercised with a fake client in tests and by code review of the request format, not against the live service.
 * **Commission** is charged to the sender on top of the reward (a design decision; see PAYMENTS.md to change it). Auto-confirm after 60 minutes of seller silence is a default that the admin can change or disable.
 * **Dependency audit** (run on the pinned versions): `npm audit` reports 0 vulnerabilities. `pip-audit` reports python-ecdsa (CVE-2024-23342, a timing attack on **P-256** signing, no upstream fix) as a transitive dependency of `bip-utils`. This project only uses secp256k1, which bip-utils serves through `coincurve`, and never signs anything with python-ecdsa, so the issue is not reachable. Re-run both audits before every release.
-* **Supabase mode**: the schema handling, Row Level Security, role privileges, dump / restore and connection-URL logic are tested against a local PostgreSQL with simulated Supabase roles; nothing has been run against a real Supabase project, and the compose / installer / backup scripts for it were checked statically (no Docker daemon was available).
+* **Supabase mode**: the schema handling, Row Level Security, role privileges, dump / restore and connection-URL logic are tested against a local PostgreSQL with simulated Supabase roles, and CI runs the Docker stack against a plain PostgreSQL outside the stack; nothing has been run against a real Supabase project.
 * Telegram long polling, one bot process. Webhook mode and horizontal scaling are not implemented.
 * English only (all text in `app/texts.py`, easy to translate).
 * Operating this service legally and within the terms of the involved platforms is the operator's responsibility.

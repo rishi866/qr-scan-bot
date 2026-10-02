@@ -82,9 +82,10 @@ docs/       guides
 ## Tests
 
 ```bash
-cd backend && pytest -q            # 258 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
+cd backend && pytest -q            # 264 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-CI (GitHub Actions) runs the same on every push - the backend suite twice (default schema, and inside a dedicated `DB_SCHEMA`, the hosted layout) - and checks the
-deployment files (shell syntax, the compose file in both database modes).
+CI (GitHub Actions) runs the same on every push - the backend suite twice (default schema, and inside a dedicated `DB_SCHEMA`, the hosted layout) - checks the
+deployment files (shell syntax, the compose file in both database modes), and **builds the Docker images and starts the real stack** (once with the PostgreSQL container, once with a database outside
+the stack): migrations, API, HTTPS through Caddy, first admin, backup and restore.
