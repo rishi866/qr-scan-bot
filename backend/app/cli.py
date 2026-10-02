@@ -48,7 +48,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 # ── create-admin ────────────────────────────────────────────────────────────
 
 
-async def _create_admin(username: str, password: str, reset: bool) -> int:
+async def _create_admin(username: str, password: str, reset: bool, disable_2fa: bool = False) -> int:
     from app.api import security
     from app.db import dispose_engine, session_scope
     from app.models import Admin
@@ -70,6 +70,11 @@ async def _create_admin(username: str, password: str, reset: bool) -> int:
             existing.failed_attempts = 0
             existing.locked_until = None
             print(f"✅ password of '{username}' was reset; all its sessions were signed out")
+            if disable_2fa:
+                existing.totp_enabled = False
+                existing.totp_secret_enc = None
+                existing.last_totp_step = None
+                print("✅ two-factor authentication was switched off - enrol again under Settings → Security")
         else:
             db.add(Admin(username=username, password_hash=security.hash_password(password)))
             print(f"✅ admin '{username}' created")
@@ -82,7 +87,10 @@ def cmd_create_admin(args: argparse.Namespace) -> int:
     if not args.password and not os.environ.get("ADMIN_PASSWORD") and getpass.getpass("Repeat password: ") != password:
         print("❌ passwords do not match")
         return 1
-    return asyncio.run(_create_admin(args.username, password, args.reset))
+    if args.disable_2fa and not args.reset:
+        print("❌ --disable-2fa only works together with --reset (it is the recovery path for a lost authenticator)")
+        return 1
+    return asyncio.run(_create_admin(args.username, password, args.reset, args.disable_2fa))
 
 
 # ── gen-wallet ──────────────────────────────────────────────────────────────
@@ -315,6 +323,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--username", default="admin")
     p.add_argument("--password", help="omit to be prompted (recommended)")
     p.add_argument("--reset", action="store_true", help="reset the password of an existing admin")
+    p.add_argument("--disable-2fa", action="store_true", help="with --reset: also switch two-factor authentication off (lost authenticator)")
     p.set_defaults(fn=cmd_create_admin)
 
     p = sub.add_parser("gen-wallet", help="generate an HD wallet for deposits")

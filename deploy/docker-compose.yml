@@ -1,0 +1,120 @@
+# QR Exchange - production stack for a single VPS.
+#
+#   db       PostgreSQL 16 (not published: only the other containers can reach it)
+#   migrate  one-shot: applies the database migrations, then exits
+#   api      FastAPI admin API
+#   bot      Telegram bot + background worker (timers, outbox, blockchain watcher, payouts)
+#   web      Caddy: HTTPS, the admin panel (static files) and the /api reverse proxy
+#
+# Usage (from this directory):  cp .env.example .env  &&  edit .env  &&  docker compose up -d --build
+name: qrbot
+
+x-backend: &backend
+  build:
+    context: ../backend
+  image: qrbot-backend:latest
+  env_file: .env
+  environment:
+    # composed here so the password only has to be written once
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-qrbot}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/${POSTGRES_DB:-qrbot}
+    PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+    ENVIRONMENT: production
+    UPLOAD_DIR: /data/uploads
+  volumes:
+    - uploads:/data/uploads
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qrbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-qrbot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "app.cli", "migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  bot:
+    <<: *backend
+    command: ["python", "-m", "app.bot.main"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    image: qrbot-web:latest
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

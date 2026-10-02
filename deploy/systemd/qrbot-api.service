@@ -1,0 +1,29 @@
+# Alternative to Docker: run the API directly under systemd. See docs/DEPLOYMENT.md ("Without Docker").
+# Install:  sudo cp qrbot-api.service qrbot-bot.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#           sudo systemctl enable --now qrbot-api qrbot-bot
+[Unit]
+Description=QR Exchange - admin API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=qrbot
+Group=qrbot
+WorkingDirectory=/opt/qr-scan-bot/backend
+EnvironmentFile=/etc/qrbot/qrbot.env
+ExecStart=/opt/qr-scan-bot/backend/.venv/bin/uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qrbot
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

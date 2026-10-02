@@ -20,3 +20,5 @@ def setup_logging() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("telegram.ext").setLevel(max(level, logging.INFO))
+    # alembic announces every plugin it loads, even when only reading the current revision
+    logging.getLogger("alembic").setLevel(logging.WARNING)

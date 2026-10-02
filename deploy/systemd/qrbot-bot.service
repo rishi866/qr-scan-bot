@@ -1,0 +1,26 @@
+[Unit]
+Description=QR Exchange - Telegram bot and background worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=qrbot
+Group=qrbot
+WorkingDirectory=/opt/qr-scan-bot/backend
+EnvironmentFile=/etc/qrbot/qrbot.env
+ExecStart=/opt/qr-scan-bot/backend/.venv/bin/python -m app.bot.main
+Restart=always
+RestartSec=3
+
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qrbot
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

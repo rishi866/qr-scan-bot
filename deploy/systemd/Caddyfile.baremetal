@@ -1,0 +1,31 @@
+# Caddy for the non-Docker setup: serves the exported panel from disk and proxies /api to uvicorn on 127.0.0.1:8000.
+# Replace admin.example.com / you@example.com, then: sudo cp Caddyfile.baremetal /etc/caddy/Caddyfile && sudo systemctl reload caddy
+{
+	email you@example.com
+}
+
+admin.example.com {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /tz.html {
+		header Content-Security-Policy "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
+		root * /opt/qr-scan-bot/frontend/out
+		file_server
+	}
+
+	handle {
+		header {
+			X-Frame-Options DENY
+			X-Content-Type-Options nosniff
+			Referrer-Policy same-origin
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		}
+		root * /opt/qr-scan-bot/frontend/out
+		file_server
+	}
+}
