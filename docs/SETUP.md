@@ -96,7 +96,7 @@ rows end up as *failed* (harmless). The seeder refuses to run when `ENVIRONMENT=
 
 ```bash
 cd backend
-pytest -q                 # 249 tests, ~1 min
+pytest -q                 # 257 tests, ~1 min
 ruff check .
 DB_SCHEMA=qrbot_suite pytest -q    # the same suite with every table in a dedicated schema (the hosted / Supabase layout; CI runs both)
 ```
@@ -115,6 +115,7 @@ database** - never point it at data you care about. What is covered:
 | `test_bot_e2e.py` | the real python-telegram-bot application against a simulated Telegram: complete journeys of sender, scanner and admin, **including the anonymity assertions** |
 | `test_api_*.py` | authentication, 2FA, lockout, CSRF, security headers, every admin endpoint |
 | `test_cli.py` | first-admin creation, password rules, 2FA recovery |
+| `test_deploy_scripts.py` | `deploy/backup.sh` and `restore.sh` run for real against the test server through a stand-in `docker` command: modes, the one-transaction restore, failure handling, no leftovers (needs `bash`, `psql`, `pg_dump`; skipped without them) |
 | `test_dbtools.py` | hosted-database support: `DB_SCHEMA`, schema pinning, migrating into a dedicated schema, Row Level Security, the exposure self-check, connection-URL handling, dedicated-role privileges (the role-based tests need a test user that may `CREATE ROLE` and are skipped otherwise) |
 
 ## 6. Everyday commands

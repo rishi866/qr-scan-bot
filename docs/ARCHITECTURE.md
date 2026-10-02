@@ -132,7 +132,7 @@ Every message to another person is first written to `outbox` in the **same trans
 
 ## 10. Testing
 
-`backend/tests` (249 tests, real PostgreSQL - the whole suite also runs inside a dedicated schema in CI): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
+`backend/tests` (257 tests, real PostgreSQL - the whole suite also runs inside a dedicated schema in CI): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
 a **simulated Telegram** that runs the real `python-telegram-bot` application with an injected transport for end-to-end journeys; API tests for every endpoint including authentication, 2FA, CSRF and lockout.
 The panel is type-checked and built in CI; its screens and write flows were verified manually in a headless browser (Playwright) against seeded demo data, but there is no automated browser test suite in the repository.
 
