@@ -104,6 +104,11 @@ body {
   outline-offset: 2px;
 }
 
+/* containers that only receive focus from script (dialogs) get no ring */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }

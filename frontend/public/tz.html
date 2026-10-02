@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Detect my time zone</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #111827; --muted: #667085; --card: #f1f3f7; --btn: #4f46e5; --btn-fg: #ffffff; --bad: #c62828;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121927; --fg: #e6e9f0; --muted: #94a0b8; --card: #19223a; --btn: #8b93ff; --btn-fg: #0b0f17; --bad: #f87171; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--tg-theme-bg-color, var(--bg)); color: var(--tg-theme-text-color, var(--fg));
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; justify-content: center; min-height: 100vh; padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 420px; margin: 0 auto; text-align: center; }
+  .pin { font-size: 44px; line-height: 1; margin-bottom: 8px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  p { margin: 0 0 16px; color: var(--tg-theme-hint-color, var(--muted)); }
+  .zone { background: var(--tg-theme-secondary-bg-color, var(--card)); border-radius: 14px; padding: 16px; margin: 0 0 20px; }
+  .zone strong { display: block; font-size: 22px; word-break: break-word; }
+  .zone span { display: block; margin-top: 4px; color: var(--tg-theme-hint-color, var(--muted)); font-size: 14px; }
+  button {
+    width: 100%; border: 0; border-radius: 12px; padding: 14px 16px; font: inherit; font-weight: 600; cursor: pointer;
+    background: var(--tg-theme-button-color, var(--btn)); color: var(--tg-theme-button-text-color, var(--btn-fg));
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  button:focus-visible { outline: 3px solid var(--tg-theme-link-color, var(--btn)); outline-offset: 2px; }
+  .note { margin-top: 14px; font-size: 13px; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <div class="pin" aria-hidden="true">📍</div>
+  <h1>Is this your time zone?</h1>
+  <p>Your scanner slots and reminders use your local time. Only the time zone name is sent to the bot - not your location.</p>
+
+  <div class="zone" aria-live="polite">
+    <strong id="zone">Detecting…</strong>
+    <span id="clock"></span>
+  </div>
+
+  <button id="confirm" type="button" disabled>Yes, use this time zone</button>
+  <p class="note" id="note">If it is wrong, close this window and choose &ldquo;Enter manually&rdquo; in the chat.</p>
+</main>
+
+<script>
+(function () {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  var zone = "";
+  try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { zone = ""; }
+
+  var zoneEl = document.getElementById("zone");
+  var clockEl = document.getElementById("clock");
+  var noteEl = document.getElementById("note");
+  var button = document.getElementById("confirm");
+
+  function offsetText() {
+    var minutes = -new Date().getTimezoneOffset();
+    var sign = minutes < 0 ? "-" : "+";
+    var abs = Math.abs(minutes);
+    var hh = String(Math.floor(abs / 60)).padStart(2, "0");
+    var mm = String(abs % 60).padStart(2, "0");
+    return "UTC" + sign + hh + ":" + mm;
+  }
+
+  function tick() {
+    clockEl.textContent = "Local time now: " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " (" + offsetText() + ")";
+  }
+
+  if (tg) {
+    tg.ready();
+    tg.expand();
+  }
+
+  if (!zone) {
+    zoneEl.textContent = "Could not detect";
+    noteEl.textContent = "Close this window and choose “Enter manually” in the chat.";
+    noteEl.className = "note error";
+  } else {
+    zoneEl.textContent = zone.replace(/_/g, " ");
+    tick();
+    setInterval(tick, 15000);
+    // outside Telegram the script still defines Telegram.WebApp, but its platform is "unknown"
+    if (tg && tg.platform && tg.platform !== "unknown") {
+      button.disabled = false;
+    } else {
+      noteEl.textContent = "Open this page from the bot’s “Detect my time zone” button inside Telegram.";
+      noteEl.className = "note error";
+    }
+  }
+
+  button.addEventListener("click", function () {
+    if (!tg || !zone) return;
+    button.disabled = true;
+    var langs = Array.prototype.slice.call(navigator.languages || [navigator.language || ""], 0, 10).filter(Boolean);
+    try {
+      tg.sendData(JSON.stringify({ tz: zone, langs: langs }));
+    } catch (e) {
+      button.disabled = false;
+      noteEl.textContent = "Could not send the time zone. Please choose “Enter manually” in the chat.";
+      noteEl.className = "note error";
+    }
+  });
+})();
+</script>
+</body>
+</html>

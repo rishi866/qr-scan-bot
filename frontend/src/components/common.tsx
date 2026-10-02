@@ -58,7 +58,7 @@ export function PersonCell({ name, sub, country, alias }: { name: string | null 
         {country !== undefined && <span title={country ?? ""}>{flag(country)}</span>}
         <span className="truncate">{alias ?? name ?? "-"}</span>
       </div>
-      {(sub || (alias && name)) && <div className="truncate text-xs text-muted">{alias && name ? `${name} · ` : ""}{sub}</div>}
+      {(sub || (alias && name)) && <div className="truncate text-xs text-muted">{[alias ? name : null, sub].filter(Boolean).join(" · ")}</div>}
     </div>
   );
 }

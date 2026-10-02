@@ -54,13 +54,31 @@ async def lifespan(app: FastAPI):
     await dispose_engine()
 
 
+# The admin panel may not be framed or load anything from other origins. (Next.js' static export needs
+# inline scripts / styles for hydration, hence 'unsafe-inline'; `data:` images are the 2FA QR code.)
+PANEL_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+    "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+# The time-zone Mini App is opened inside Telegram (an iframe on Telegram Web), so it may only be framed by Telegram.
+MINI_APP_PATHS = ("/tz.html", "/tz/")
+MINI_APP_CSP = "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
+
+
 class SecurityHeaders(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+        path = request.url.path
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "same-origin")
-        if request.url.path.startswith("/api/"):
+        if path in MINI_APP_PATHS:
+            response.headers.setdefault("Content-Security-Policy", MINI_APP_CSP)
+        else:
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            if not path.startswith("/api/"):
+                response.headers.setdefault("Content-Security-Policy", PANEL_CSP)
+        if path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
 

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import DepositStatus, LedgerType, WithdrawalStatus
 from app.models import Deposit, LedgerEntry, Wallet, Withdrawal
-from app.money import ZERO
+from app.money import ZERO, plain
 
 
 class WalletError(Exception):
@@ -126,10 +126,10 @@ class ReconcileReport:
         return {
             "ok": self.ok,
             "problems": self.problems,
-            "ledger_total": str(self.ledger_total),
-            "expected_total": str(self.expected_total),
-            "platform_balance": str(self.platform_balance),
-            "user_total": str(self.user_total),
+            "ledger_total": plain(self.ledger_total),
+            "expected_total": plain(self.expected_total),
+            "platform_balance": plain(self.platform_balance),
+            "user_total": plain(self.user_total),
         }
 
 

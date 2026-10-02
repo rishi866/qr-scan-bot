@@ -37,9 +37,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const { admin, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const { data: badges } = useApi<Badges>("/api/badges", undefined, 30000);
+  const { data: badges, reload: reloadBadges } = useApi<Badges>("/api/badges", undefined, 30000);
 
   useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    window.addEventListener("badges:refresh", reloadBadges);
+    return () => window.removeEventListener("badges:refresh", reloadBadges);
+  }, [reloadBadges]);
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-0.5 px-3 py-3" aria-label="Main">

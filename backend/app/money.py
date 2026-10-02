@@ -38,6 +38,11 @@ def percent_of(amount: Decimal, percent: Decimal) -> Decimal:
     return q(amount * percent / Decimal(100))
 
 
+def plain(value: Decimal) -> str:
+    """Exact decimal string for JSON: ``12.50000000`` -> ``12.5``, ``0E-8`` -> ``0`` (never scientific notation)."""
+    return format(value.normalize(), "f")
+
+
 def fmt_money(value: object, min_dp: int = 2) -> str:
     """``0.5005``, ``10.00``, ``1234.5`` -> human friendly, never scientific notation."""
     d = q(to_decimal(value))

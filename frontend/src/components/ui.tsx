@@ -149,7 +149,7 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
 
 export function Stat({ label, value, hint, tone, href, icon }: { label: string; value: ReactNode; hint?: ReactNode; tone?: Tone; href?: string; icon?: string }) {
   const body = (
-    <div className={cn("flex h-full flex-col justify-between rounded-xl border border-line bg-surface p-4 shadow-sm", href && "transition-colors hover:bg-surface2")}>
+    <div className={cn("flex h-full flex-col rounded-xl border border-line bg-surface p-4 shadow-sm", href && "transition-colors hover:bg-surface2")}>
       <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted">
         <span>{label}</span>
         {icon && <Icon name={icon} className="h-4 w-4" />}
@@ -214,7 +214,7 @@ export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLText
 
 export function SearchBox({ value, onChange, placeholder = "Search…" }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <div className="relative min-w-52 flex-1 sm:flex-none">
+    <div className="relative min-w-52 flex-1 sm:w-72 sm:flex-none">
       <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
       <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="pl-8" aria-label={placeholder} />
     </div>

@@ -290,3 +290,24 @@ async def test_admin_panel_static_files_are_served_when_configured(tmp_path, mon
         assert "users page" in (await c.get("/users/")).text
         assert (await c.get("/api/health")).status_code == 200  # the API still wins over the static mount
         assert (await c.get("/api/auth/me")).status_code == 401
+
+
+async def test_security_headers_panel_is_unframeable_but_the_mini_app_may_be_framed_by_telegram(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text("<html><body>panel</body></html>")
+    (tmp_path / "tz.html").write_text("<html><body>mini app</body></html>")
+    monkeypatch.setattr(get_settings(), "admin_static_dir", str(tmp_path))
+    served = create_app()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=served), base_url="http://test") as c:
+        panel = await c.get("/")
+        assert panel.headers["x-frame-options"] == "DENY"
+        assert "frame-ancestors 'none'" in panel.headers["content-security-policy"]
+        assert "script-src 'self'" in panel.headers["content-security-policy"]
+
+        mini = await c.get("/tz.html")
+        assert mini.status_code == 200 and "mini app" in mini.text
+        assert "x-frame-options" not in mini.headers  # DENY would blank the Mini App on Telegram Web
+        assert "https://web.telegram.org" in mini.headers["content-security-policy"]
+
+        api = await c.get("/api/health")
+        assert api.headers["x-frame-options"] == "DENY" and api.headers["cache-control"] == "no-store"
+        assert "content-security-policy" not in api.headers

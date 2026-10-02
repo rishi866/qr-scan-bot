@@ -111,7 +111,7 @@ async def list_broadcasts(_: CurrentAdmin, db: Db, params: Pages):
 async def list_audit(_: CurrentAdmin, db: Db, params: Pages, action: str | None = None, admin: str | None = None):
     stmt = select(AuditLog)
     if action:
-        stmt = stmt.where(AuditLog.action == action)
+        stmt = stmt.where(AuditLog.action.icontains(action.strip(), autoescape=True))
     if admin:
         stmt = stmt.where(AuditLog.admin_username == admin)
     rows, total = await paginate(db, stmt.order_by(AuditLog.id.desc()), params)

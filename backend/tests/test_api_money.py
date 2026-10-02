@@ -345,6 +345,9 @@ async def test_settings_roundtrip_validation_and_audit(api):
     assert audit["total"] == 1 and audit["items"][0]["admin"] == "boss"
     assert audit["items"][0]["details"]["commission_percent"] == {"from": "0.1", "to": "0.25"}
     assert (await api.get("/api/audit?admin=ghost")).json()["total"] == 0
+    # the action filter is a case-insensitive "contains" match and wildcards are not special
+    assert (await api.get("/api/audit?action=SETTINGS")).json()["total"] == 1
+    assert (await api.get("/api/audit?action=%25")).json()["total"] == 0
 
 
 async def test_broadcast_goes_to_the_right_audience_once(api):

@@ -84,6 +84,11 @@ export const api = {
   url: (path: string, params?: Params) => API_BASE + path + qs(params),
 };
 
+/** Ask the sidebar to re-fetch its badge counts (after approving a user, resolving a dispute, ...). */
+export function refreshBadges(): void {
+  window.dispatchEvent(new Event("badges:refresh"));
+}
+
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
@@ -115,7 +120,6 @@ export function useApi<T>(path: string | null, params?: Params, refreshMs?: numb
         if (!ctl.signal.aborted) setLoading(false);
       });
     return () => ctl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, tick]);
 
   useEffect(() => {

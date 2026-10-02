@@ -33,34 +33,65 @@ export function DataTable<T>({
   onRowClick?: (row: T) => void;
   rowClassName?: (row: T) => string | undefined;
 }) {
+  // On phones every row becomes a card: first column = title, header-less columns = actions, the rest = label/value pairs.
+  const actionColumns = columns.filter((c) => c.header === "");
+  const detailColumns = columns.slice(1).filter((c) => c.header !== "" && c.hideBelow !== "lg" && c.hideBelow !== "xl");
+  const title = columns[0];
+
   return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
-            {columns.map((c) => (
-              <th key={c.key} scope="col" className={cn("whitespace-nowrap px-3 py-2.5 font-medium", c.align === "right" && "text-right", c.align === "center" && "text-center", c.hideBelow && HIDE[c.hideBelow], c.className)}>
-                {c.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows?.map((row) => (
-            <tr
-              key={rowKey(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cn("border-b border-line/70 last:border-0", onRowClick && "cursor-pointer hover:bg-surface2", rowClassName?.(row))}
-            >
+    <div className="relative">
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
               {columns.map((c) => (
-                <td key={c.key} className={cn("px-3 py-2.5 align-middle", c.align === "right" && "text-right tabular", c.align === "center" && "text-center", c.hideBelow && HIDE[c.hideBelow], c.className)}>
-                  {c.cell(row)}
-                </td>
+                <th key={c.key} scope="col" className={cn("whitespace-nowrap px-3 py-2.5 font-medium", c.align === "right" && "text-right", c.align === "center" && "text-center", c.hideBelow && HIDE[c.hideBelow], c.className)}>
+                  {c.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows?.map((row) => (
+              <tr
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cn("border-b border-line/70 last:border-0", onRowClick && "cursor-pointer hover:bg-surface2", rowClassName?.(row))}
+              >
+                {columns.map((c) => (
+                  <td key={c.key} className={cn("px-3 py-2.5 align-middle", c.align === "right" && "text-right tabular", c.align === "center" && "text-center", c.hideBelow && HIDE[c.hideBelow], c.className)}>
+                    {c.cell(row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="divide-y divide-line md:hidden">
+        {rows?.map((row) => (
+          <li
+            key={rowKey(row)}
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+            className={cn("px-4 py-3", onRowClick && "cursor-pointer active:bg-surface2", rowClassName?.(row))}
+          >
+            <div className="min-w-0 text-sm">{title.cell(row)}</div>
+            {detailColumns.length > 0 && (
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {detailColumns.map((c) => (
+                  <div key={c.key} className="min-w-0">
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted">{c.header}</dt>
+                    <dd className="mt-0.5 break-words tabular">{c.cell(row)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {actionColumns.length > 0 && <div className="mt-3 flex flex-wrap justify-end gap-2">{actionColumns.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>}
+          </li>
+        ))}
+      </ul>
+
       {loading && rows === undefined && (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted"><Spinner /> Loading…</div>
       )}

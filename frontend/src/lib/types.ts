@@ -292,3 +292,37 @@ export interface ChainStatus {
   last_scanned_block: number | null;
   worker_heartbeat: string | null;
 }
+
+export interface SettingsResponse {
+  definitions: SettingDef[];
+  values: Record<string, unknown>;
+  changed?: string[];
+}
+
+export interface CoverageResponse {
+  date: string;
+  current_hour: number;
+  hours: { hour: number; scanners: { user_id: number; alias: string | null; slot: string; timezone: string }[] }[];
+}
+
+export interface LedgerReport {
+  ok: boolean;
+  problems: string[];
+  ledger_total: string;
+  expected_total: string;
+  platform_balance: string;
+  user_total: string;
+}
+
+export interface WalletsSummary {
+  by_role: Record<string, { balance: string; pending: string }>;
+  platform_commission: string;
+  deposits_credited: string;
+  withdrawals_paid: string;
+  ledger: LedgerReport;
+}
+
+export interface WalletDetail {
+  wallet: WalletRow & { updated_at: string | null };
+  ledger: Page<LedgerRow>;
+}
