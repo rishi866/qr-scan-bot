@@ -232,3 +232,12 @@ async def test_dashboard_reports_a_broken_ledger_loudly(api):
         w.balance = 5  # money appears without a ledger entry
     data = (await api.get("/api/dashboard")).json()
     assert data["ledger"]["ok"] is False and data["ledger"]["problems"]
+
+
+async def test_sidebar_badges(api):
+    async with session_scope() as db:
+        await make_user(db, role="seller", status="pending")
+        await make_scanner(db, alias=None, slots=[(8, 10)])
+    assert (await api.get("/api/badges")).json() == {
+        "pending_users": 1, "open_disputes": 0, "withdrawals_to_handle": 0, "deposits_to_review": 0, "scanners_needing_name": 1,
+    }

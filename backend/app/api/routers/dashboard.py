@@ -152,3 +152,29 @@ async def dashboard(_: CurrentAdmin, db: Db):
         },
         "generated_at": now.isoformat(),
     }
+
+
+@router.get("/badges")
+async def badges(_: CurrentAdmin, db: Db):
+    """Cheap counters for the sidebar (polled every few seconds by the panel)."""
+
+    async def count(stmt) -> int:
+        return (await db.execute(stmt)).scalar_one()
+
+    return {
+        "pending_users": await count(select(func.count()).select_from(User).where(User.status == UserStatus.PENDING.value)),
+        "open_disputes": await count(
+            select(func.count()).select_from(Dispute).where(Dispute.status.in_([DisputeStatus.AWAITING_PROOF.value, DisputeStatus.PENDING_REVIEW.value]))
+        ),
+        "withdrawals_to_handle": await count(
+            select(func.count()).select_from(Withdrawal).where(
+                Withdrawal.status.in_([WithdrawalStatus.PENDING.value, WithdrawalStatus.APPROVED.value, WithdrawalStatus.FAILED.value])
+            )
+        ),
+        "deposits_to_review": await count(
+            select(func.count()).select_from(Deposit).where(Deposit.status.in_([DepositStatus.PENDING.value, DepositStatus.BELOW_MIN.value]))
+        ),
+        "scanners_needing_name": await count(
+            select(func.count()).select_from(User).where(User.role == Role.SCANNER.value, User.status == UserStatus.APPROVED.value, User.alias.is_(None))
+        ),
+    }

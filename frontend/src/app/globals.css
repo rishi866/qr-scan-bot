@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* Semantic colour tokens: components use bg-surface / text-fg / border-line ... and
+   automatically follow the visitor's light / dark preference. */
+:root {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --line: #e2e5ec;
+  --fg: #111827;
+  --muted: #667085;
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-fg: #ffffff;
+  --brand-soft: #eef2ff;
+  --ok: #047857;
+  --ok-soft: #e7f8f0;
+  --warn: #b45309;
+  --warn-soft: #fff6e0;
+  --bad: #c62828;
+  --bad-soft: #fdecec;
+  --info: #1d4ed8;
+  --info-soft: #e8f0ff;
+  --violet: #6d28d9;
+  --violet-soft: #f1eaff;
+  --sidebar: #0f172a;
+  --sidebar-fg: #aeb8cc;
+  --sidebar-active: #1e293b;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f17;
+    --surface: #121927;
+    --surface-2: #19223a;
+    --line: #25304a;
+    --fg: #e6e9f0;
+    --muted: #94a0b8;
+    --brand: #8b93ff;
+    --brand-hover: #a3a9ff;
+    --brand-fg: #0b0f17;
+    --brand-soft: #1b2142;
+    --ok: #4ade80;
+    --ok-soft: #10261c;
+    --warn: #fbbf24;
+    --warn-soft: #2b2110;
+    --bad: #f87171;
+    --bad-soft: #2d1416;
+    --info: #7aa7ff;
+    --info-soft: #14213d;
+    --violet: #c4a5ff;
+    --violet-soft: #231a3d;
+    --sidebar: #080b12;
+    --sidebar-fg: #94a0b8;
+    --sidebar-active: #151c2e;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-fg: var(--sidebar-fg);
+  --color-sidebar-active: var(--sidebar-active);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
