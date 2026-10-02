@@ -42,7 +42,27 @@ def cmd_migrate(args: argparse.Namespace) -> int:
     cfg.set_main_option("script_location", str(root / "migrations"))
     command.upgrade(cfg, "head")
     print("database is up to date")
+    try:
+        asyncio.run(_harden())
+    except Exception as exc:  # loud on purpose: on a hosted database an unprotected table may be reachable over HTTP
+        print(f"❌ migrations are applied, but Row Level Security could not be switched on: {type(exc).__name__}: {str(exc)[:200]}")
+        return 1
     return 0
+
+
+async def _harden() -> None:
+    """On Supabase-style databases: Row Level Security on every table of our schema (nothing happens elsewhere)."""
+    from app import dbtools
+    from app.db import dispose_engine, session_scope
+
+    try:
+        async with session_scope() as db:
+            schema = await dbtools.effective_schema(db)
+            changed = await dbtools.enable_row_level_security(db, schema)
+    finally:
+        await dispose_engine()
+    if changed:
+        print(f"Row Level Security switched on for {len(changed)} table(s) in schema '{schema}'")
 
 
 # ── create-admin ────────────────────────────────────────────────────────────
@@ -200,6 +220,7 @@ def _alembic_head() -> str | None:
 
 
 async def _check() -> int:
+    from app import dbtools
     from app.chain import hd as hd_mod
     from app.chain.bsc import async_client_from_settings
     from app.config import _INSECURE_DEFAULT_SECRET, get_settings
@@ -213,14 +234,27 @@ async def _check() -> int:
     _out(ok, "SECRET_KEY", "random, >= 32 chars" if ok else "set a random value: openssl rand -hex 32")
     problems += not ok
 
+    for status, label, detail in dbtools.hosted_db_advice(settings.database_url, settings.db_schema, settings.db_pool_size + settings.db_max_overflow):
+        _out(status, label, detail)
+        problems += status is False
+
     try:
         async with session_scope() as db:
             await db.execute(text("SELECT 1"))
             version = (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one_or_none()
+            schema = await dbtools.effective_schema(db)
+            hosted = bool(await dbtools.api_roles_present(db))
+            exposure = await dbtools.exposure_problems(db, schema)
         head = _alembic_head()
         current = version == head
-        _out(current, "database", f"migration {version}" + ("" if current else f" (latest is {head}: run `python -m app.cli migrate`)"))
+        where = f", schema '{schema}'" if settings.db_schema else ""
+        _out(current, "database", f"migration {version}{where}" + ("" if current else f" (latest is {head}: run `python -m app.cli migrate`)"))
         problems += not current
+        for item in exposure:
+            _out(False, "exposed over HTTP", item)
+            problems += 1
+        if hosted and not exposure:
+            _out(True, "exposed over HTTP", f"no - schema '{schema}' is not reachable through Supabase's Data API and Row Level Security is on")
     except Exception as exc:
         _out(False, "database", f"{type(exc).__name__}: {str(exc)[:120]}")
         problems += 1

@@ -25,6 +25,7 @@ import pytest_asyncio  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from app import db as app_db  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.models import Base  # noqa: E402
 
 _TABLES = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
@@ -33,7 +34,10 @@ _TABLES = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _engine():
     engine = app_db.init_engine()
+    schema = get_settings().db_schema  # `DB_SCHEMA=qrbot_suite pytest` runs the whole suite inside a dedicated schema
     async with engine.begin() as conn:
+        if schema:
+            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine

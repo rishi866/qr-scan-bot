@@ -7,6 +7,7 @@ allowed URL domains, ...) live in the database ``settings`` table instead - see
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated
@@ -16,6 +17,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Binance-Peg USDT on BNB Smart Chain (BEP-20). 18 decimals on BSC.
 USDT_BSC = "0x55d398326f99059fF775485246999027B3197955"
+
+RESERVED_SCHEMAS = frozenset({"public", "information_schema", "extensions", "auth", "storage", "graphql", "graphql_public", "realtime", "vault"})
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production-change-me-in-production"  # noqa: S105 - sentinel, rejected in production
 
@@ -30,6 +33,12 @@ class Settings(BaseSettings):
     public_base_url: str = ""  # e.g. https://admin.example.com (needed for the timezone Mini App)
     log_level: str = "INFO"
     upload_dir: str = "./data/uploads"
+
+    # ── database tuning (hosted Postgres such as Supabase) ─────────────────
+    db_schema: str = ""  # keep every table in this schema (e.g. "qrbot"); empty = the database's default schema
+    db_pool_size: int = Field(10, ge=1, le=100)  # per process (the API and the bot are separate processes)
+    db_max_overflow: int = Field(10, ge=0, le=100)
+    db_pool_recycle_seconds: int = Field(1800, ge=60)  # replace connections before a pooler / firewall drops them
 
     # ── telegram ───────────────────────────────────────────────────────────
     telegram_bot_token: SecretStr = SecretStr("")
@@ -93,6 +102,20 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_slash(cls, v: str) -> str:
         return v.rstrip("/")
+
+    @field_validator("db_schema")
+    @classmethod
+    def _check_schema(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v:
+            return ""
+        # the name is spliced into `SET search_path`, so it must be a plain identifier
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", v) or v in RESERVED_SCHEMAS or v.startswith("pg_"):
+            raise ValueError(
+                "DB_SCHEMA must be a plain lower-case identifier (letters, digits, underscore) and not "
+                "public / information_schema / pg_*; leave it empty to use the database's default schema"
+            )
+        return v
 
     @model_validator(mode="after")
     def _check_production_secrets(self):
