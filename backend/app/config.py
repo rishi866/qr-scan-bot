@@ -14,6 +14,7 @@ from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 # Binance-Peg USDT on BNB Smart Chain (BEP-20). 18 decimals on BSC.
 USDT_BSC = "0x55d398326f99059fF775485246999027B3197955"
@@ -21,6 +22,27 @@ USDT_BSC = "0x55d398326f99059fF775485246999027B3197955"
 RESERVED_SCHEMAS = frozenset({"public", "information_schema", "extensions", "auth", "storage", "graphql", "graphql_public", "realtime", "vault"})
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production-change-me-in-production"  # noqa: S105 - sentinel, rejected in production
+
+
+def normalize_database_url(raw: str) -> str:
+    """Accept the connection strings people actually paste and turn them into what SQLAlchemy + asyncpg need.
+
+    * ``postgres://`` / ``postgresql://`` -> ``postgresql+asyncpg://``
+    * libpq's ``sslmode=`` -> asyncpg's ``ssl=``; Prisma-style ``pgbouncer=true`` is dropped (asyncpg would reject it)
+    * Supabase hosts get ``ssl=require`` unless a mode was chosen (Supabase accepts unencrypted connections otherwise)
+    """
+    url = make_url(raw)
+    if url.drivername in ("postgres", "postgresql"):
+        url = url.set(drivername="postgresql+asyncpg")
+    query = dict(url.query)
+    if "sslmode" in query:
+        query.setdefault("ssl", query["sslmode"])
+        del query["sslmode"]
+    query.pop("pgbouncer", None)
+    host = (url.host or "").lower()
+    if "ssl" not in query and host.endswith((".supabase.co", ".supabase.com")):
+        query["ssl"] = "require"
+    return url.set(query=query).render_as_string(hide_password=False)
 
 
 class Settings(BaseSettings):
@@ -102,6 +124,11 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_slash(cls, v: str) -> str:
         return v.rstrip("/")
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        return normalize_database_url(v)
 
     @field_validator("db_schema")
     @classmethod

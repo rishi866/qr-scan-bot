@@ -19,13 +19,14 @@ A Telegram bot plus a web admin panel for an **anonymous exchange platform**:
 | **Bot** (English) | onboarding with time-zone detection, admin approval, slots, `/send`, accept / skip / done, confirm / reject, disputes with screenshot proof, wallet, deposits, withdrawals |
 | **Admin panel** | dashboard · users · scanners & names · slots (UTC coverage) · transactions (+CSV) · disputes (proof viewer) · wallets, deposits, withdrawals, payout status · reports · settings, broadcast, 2FA, audit log |
 | **Money** | USDT on BNB Smart Chain (BEP-20) and Binance Pay; double-entry-style ledger that is reconciled against wallets; commission 0.1 % (configurable) |
-| **Stack** | FastAPI · python-telegram-bot · PostgreSQL · SQLAlchemy/Alembic · Web3.py · pytz · Next.js + Tailwind + Chart.js · Docker + Caddy |
+| **Stack** | FastAPI · python-telegram-bot · PostgreSQL (own container, or Supabase) · SQLAlchemy/Alembic · Web3.py · pytz · Next.js + Tailwind + Chart.js · Docker + Caddy |
 
 ## Documentation
 
 | Guide | Read it when |
 |---|---|
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | you want it running on a **Hostinger VPS** (or any Ubuntu server) |
+| [docs/SUPABASE.md](docs/SUPABASE.md) | you want the database on **Supabase** instead of the PostgreSQL container |
 | [docs/SETUP.md](docs/SETUP.md) | you want to develop / test on your own machine |
 | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | you run the platform day to day |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | you explain the bot to senders and scanners |
@@ -81,8 +82,9 @@ docs/       guides
 ## Tests
 
 ```bash
-cd backend && pytest -q            # 227 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
+cd backend && pytest -q            # 249 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-CI (GitHub Actions) runs the same on every push.
+CI (GitHub Actions) runs the same on every push - the backend suite twice (default schema, and inside a dedicated `DB_SCHEMA`, the hosted layout) - and checks the
+deployment files (shell syntax, the compose file in both database modes).

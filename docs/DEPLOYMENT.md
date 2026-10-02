@@ -6,12 +6,16 @@ This guide takes you from "I have nothing" to a running bot and panel on **one V
 > `.env` helper functions were exercised in isolation, and the backend image was *simulated* - a clean virtualenv with only `requirements.txt`, then `migrate`, the bot's handler registration and the API (production mode,
 > `/api/health`, docs disabled) started from only the files the Dockerfile copies. What was **not** possible: building the images (no Docker daemon was available) and running the stack on a real VPS with a real domain.
 > Do the first install on a throw-away server (or on the real one before any user exists) and read the output of every step.
+>
+> The **Supabase mode** ([SUPABASE.md](SUPABASE.md)) was checked the same way (compose file in both modes, `bash -n`), and its SQL, URL handling, dump / restore and permission logic were run against a local PostgreSQL
+> with simulated Supabase roles. It has **not** been run against a real Supabase project, with a Docker daemon, or from a VPS.
 
 ## 0. What you need
 
 | Thing | Notes |
 |---|---|
 | **Hostinger VPS** | *KVM 2* (2 vCPU / 8 GB) is comfortable; *KVM 1* (1 vCPU / 4 GB) works - the installer adds swap for the one-time panel build. OS template: **Ubuntu 24.04 LTS** (the "Ubuntu 24.04 with Docker" template also works). |
+| **A database** | the PostgreSQL container that ships with the stack (the default; nothing to prepare), **or** a Supabase project - read [SUPABASE.md](SUPABASE.md) first. |
 | **A domain** | e.g. `admin.example.com`. Needed for HTTPS (Let's Encrypt) and for the time-zone Mini App, which Telegram only opens over HTTPS. |
 | **Telegram bot token** | from [@BotFather](https://t.me/BotFather) → `/newbot`. |
 | **Your numeric Telegram ID** | from [@userinfobot](https://t.me/userinfobot). Everybody listed in `ADMIN_TELEGRAM_IDS` receives approval requests and alerts. |
@@ -63,9 +67,9 @@ The script (safe to re-run):
 1. installs Docker from Docker's official apt repository, `ufw`, `fail2ban`, `unattended-upgrades`;
 2. adds a 2 GB swap file when the machine has < 3 GB RAM;
 3. opens only SSH / 80 / 443;
-4. asks for the domain, an e-mail for Let's Encrypt, the bot token (hidden input) and the admin Telegram ID(s); generates `SECRET_KEY` and the database password;
-   writes everything to `deploy/.env` (mode 600);
-5. `docker compose up -d --build` - PostgreSQL, one-shot migration, API, bot, and Caddy with the compiled panel;
+4. asks for the domain, an e-mail for Let's Encrypt, the bot token (hidden input), the admin Telegram ID(s) and where the database lives (a container on this server, or Supabase);
+   generates `SECRET_KEY` and - for the container - the database password; writes everything to `deploy/.env` (mode 600);
+5. `docker compose up -d --build` - PostgreSQL (container setup only), one-shot migration, API, bot, and Caddy with the compiled panel;
 6. waits for the API to be healthy, asks you to create the **first panel admin** (strong password, 12+ characters) and prints `python -m app.cli check`.
 
 Prefer to do it by hand? `cp deploy/.env.example deploy/.env`, edit it, then `cd deploy && docker compose up -d --build` and
@@ -75,7 +79,7 @@ Prefer to do it by hand? `cp deploy/.env.example deploy/.env`, edit it, then `cd
 
 ```bash
 cd /opt/qr-scan-bot/deploy
-docker compose ps                      # db healthy, api healthy, bot / web running, migrate exited (0)
+docker compose ps                      # db healthy (container setup only), api healthy, bot / web running, migrate exited (0)
 docker compose logs --tail=50 bot      # "bot @yourbot started", "starting long polling"
 curl -s https://admin.example.com/api/health      # {"status":"ok","database":true,...}
 ```
@@ -133,10 +137,10 @@ After editing `.env`: `cd /opt/qr-scan-bot/deploy && docker compose up -d` (cont
 | Task | Command (in `/opt/qr-scan-bot/deploy`) |
 |---|---|
 | Status | `docker compose ps` |
-| Logs | `docker compose logs -f --tail=100 bot` (also `api`, `web`, `db`) |
+| Logs | `docker compose logs -f --tail=100 bot` (also `api`, `web`, `migrate`, and `db` with the container setup) |
 | Update to the latest code | `./update.sh` (backup → `git pull` → build → migrate → restart) |
-| Backup now | `./backup.sh` → `deploy/backups/db-*.sql.gz` + `uploads-*.tar.gz` |
-| Restore | `./restore.sh backups/db-YYYYMMDD-HHMMSS.sql.gz` (asks you to type RESTORE) |
+| Backup now | `./backup.sh` → `deploy/backups/db-*.sql.gz` + `uploads-*.tar.gz` (Supabase: this app's schema only - [SUPABASE.md](SUPABASE.md#7-backups-and-restore)) |
+| Restore | `./restore.sh backups/db-YYYYMMDD-HHMMSS.sql.gz` (asks you to type RESTORE; with Supabase it reloads only this app's schema, in one transaction) |
 | Ledger self-check | `docker compose run --rm api python -m app.cli reconcile` |
 | Configuration check | `docker compose run --rm api python -m app.cli check` |
 | Reset a panel admin password | `docker compose run --rm api python -m app.cli create-admin --username NAME --reset` (`--disable-2fa` too if the authenticator is lost) |
@@ -169,7 +173,7 @@ to the old schema, restore the backup taken by `update.sh` with `./restore.sh`.
 Possible, but Docker is the tested path. Outline:
 
 ```bash
-sudo apt install -y python3.11 python3.11-venv postgresql caddy nodejs npm    # Node 22 from NodeSource if the distro one is older
+sudo apt install -y python3.11 python3.11-venv postgresql caddy nodejs npm    # Node 22 from NodeSource if the distro one is older (no `postgresql` with Supabase: SUPABASE.md section 10)
 sudo useradd --system --create-home --home-dir /var/lib/qrbot qrbot
 sudo -u postgres createuser qrbot && sudo -u postgres createdb -O qrbot qrbot
 cd /opt/qr-scan-bot/backend && python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -186,7 +190,7 @@ sudo systemctl reload caddy
 | Symptom | Likely cause / fix |
 |---|---|
 | Browser shows a certificate error, Caddy logs `acme` failures | the DNS A record does not point at the server yet, or port 80/443 is blocked (hPanel firewall / ufw). Fix DNS, then `docker compose restart web`. |
-| `502 Bad Gateway` on `/api` | the API container is unhealthy: `docker compose logs api migrate db`. Typical: wrong `POSTGRES_PASSWORD` after editing `.env` (the database keeps the *old* password - revert it or reset the volume on a fresh install). |
+| `502 Bad Gateway` on `/api` | the API container is unhealthy: `docker compose logs api migrate` (and `db` with the container setup). Typical: wrong `POSTGRES_PASSWORD` after editing `.env` (the database keeps the *old* password - revert it or reset the volume on a fresh install); with Supabase a wrong connection string - see [SUPABASE.md](SUPABASE.md#9-troubleshooting). |
 | Bot does not answer | `docker compose logs bot`. `Unauthorized` → wrong token. `Conflict: terminated by other getUpdates` → the same token is running somewhere else (your laptop?). |
 | Dashboard says *bot worker is not reporting* | the `bot` container is stopped or crash-looping - see its logs. |
 | Users are not asked "Detect my time zone" | `PUBLIC_BASE_URL` is derived from `DOMAIN` (https). Check `https://<domain>/tz.html` opens; the Mini App needs HTTPS. Manual country entry is the fallback and always works. |

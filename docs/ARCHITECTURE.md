@@ -19,6 +19,8 @@
 * **There is no message broker.** Everything that has to happen later (expiry, reminders, auto-confirm, proof deadlines, message delivery) is a **row with a due time** in PostgreSQL. The worker loops poll those rows
   (every 1-20 s) and process each item in its **own transaction**, so a crash, restart or a second run is harmless: the work is idempotent and the database is the single source of truth.
 * The **API** and the **bot** share the same code (`app/services`, `app/models.py`) and the same database; they never call each other.
+* The database is any PostgreSQL 14+: the `db` container by default, or a hosted one such as **Supabase** ([SUPABASE.md](SUPABASE.md)). In the hosted layout the `db` box above is external, all tables live in a dedicated schema
+  (`DB_SCHEMA`, pinned as the connection's `search_path`), the processes connect through the provider's session pooler with small pools, and Row Level Security is switched on for every table.
 * Run **exactly one bot process** (long polling allows only one consumer per token). The API is single-process too (its login rate limiter is in memory); put a second API behind a shared limiter before scaling out.
 
 ## 2. Repository map
@@ -27,7 +29,8 @@
 backend/app/
   config.py        environment-driven process settings (secrets, URLs, chain)        settings_service.py = admin-editable business rules (DB)
   models.py        all tables, constraints                                           enums.py / states.py / callbacks.py  shared constants
-  db.py            async engine, session_scope()                                     money.py     Decimal helpers          timeutil.py  zones, slots, countries
+  db.py            async engine (pool, schema pinning), session_scope()              money.py     Decimal helpers          timeutil.py  zones, slots, countries
+  dbtools.py       hosted-database hygiene: schema creation, Row Level Security, exposure checks, URL helpers
   services/        business logic - no Telegram, no HTTP
      users.py slots.py matching.py sessions.py settlement.py disputes.py wallet.py payments.py outbox.py scheduler.py urls.py proofs.py ai_verify.py qr.py
   chain/           hd.py (BIP-44 addresses) bsc.py (RPC) watcher.py payout.py sweeper.py binance.py
@@ -125,10 +128,11 @@ Every message to another person is first written to `outbox` in the **same trans
 | Input | URLs are strictly validated (https, allow-listed domains); screenshots are decoded and re-encoded with Pillow (EXIF stripped, size/pixel limits); user text is HTML-escaped in every message; bot rate limiter per user |
 | AI | screenshots only, instructions inside images are ignored, structured output, low confidence escalates to a human, refunds never automatic by default |
 | Money | decimals only, row locks, CHECK constraints, idempotent crediting, append-only ledger, audit log, reconcile |
+| Hosted database (Supabase) | dedicated schema that is never exposed over the provider's HTTP API, Row Level Security on every table (the owning role is exempt), SSL, optional certificate verification; `python -m app.cli check` verifies the exposure ([SUPABASE.md](SUPABASE.md#3-what-keeps-the-data-private)) |
 
 ## 10. Testing
 
-`backend/tests` (227 tests, real PostgreSQL): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
+`backend/tests` (249 tests, real PostgreSQL - the whole suite also runs inside a dedicated schema in CI): unit tests for time and money logic; state-machine and concurrency tests (two sellers racing for one scanner, double-confirm pays once, accept racing the expiry timer); chain tests against an in-memory EVM with a real ERC-20 contract;
 a **simulated Telegram** that runs the real `python-telegram-bot` application with an injected transport for end-to-end journeys; API tests for every endpoint including authentication, 2FA, CSRF and lockout.
 The panel is type-checked and built in CI; its screens and write flows were verified manually in a headless browser (Playwright) against seeded demo data, but there is no automated browser test suite in the repository.
 
@@ -138,6 +142,7 @@ The panel is type-checked and built in CI; its screens and write flows were veri
 * **The AI check** (Anthropic API) is optional and was exercised with a fake client in tests and by code review of the request format, not against the live service.
 * **Commission** is charged to the sender on top of the reward (a design decision; see PAYMENTS.md to change it). Auto-confirm after 60 minutes of seller silence is a default that the admin can change or disable.
 * **Dependency audit** (run on the pinned versions): `npm audit` reports 0 vulnerabilities. `pip-audit` reports python-ecdsa (CVE-2024-23342, a timing attack on **P-256** signing, no upstream fix) as a transitive dependency of `bip-utils`. This project only uses secp256k1, which bip-utils serves through `coincurve`, and never signs anything with python-ecdsa, so the issue is not reachable. Re-run both audits before every release.
+* **Supabase mode**: the schema handling, Row Level Security, role privileges, dump / restore and connection-URL logic are tested against a local PostgreSQL with simulated Supabase roles; nothing has been run against a real Supabase project, and the compose / installer / backup scripts for it were checked statically (no Docker daemon was available).
 * Telegram long polling, one bot process. Webhook mode and horizontal scaling are not implemented.
 * English only (all text in `app/texts.py`, easy to translate).
 * Operating this service legally and within the terms of the involved platforms is the operator's responsibility.

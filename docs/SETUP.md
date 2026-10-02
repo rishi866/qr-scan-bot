@@ -96,8 +96,9 @@ rows end up as *failed* (harmless). The seeder refuses to run when `ENVIRONMENT=
 
 ```bash
 cd backend
-pytest -q                 # 227 tests, ~40 s
+pytest -q                 # 249 tests, ~1 min
 ruff check .
+DB_SCHEMA=qrbot_suite pytest -q    # the same suite with every table in a dedicated schema (the hosted / Supabase layout; CI runs both)
 ```
 
 The suite uses a **real PostgreSQL** (`qrbot_test`, or whatever `TEST_DATABASE_URL` points to). **It drops and recreates every table in that
@@ -114,6 +115,7 @@ database** - never point it at data you care about. What is covered:
 | `test_bot_e2e.py` | the real python-telegram-bot application against a simulated Telegram: complete journeys of sender, scanner and admin, **including the anonymity assertions** |
 | `test_api_*.py` | authentication, 2FA, lockout, CSRF, security headers, every admin endpoint |
 | `test_cli.py` | first-admin creation, password rules, 2FA recovery |
+| `test_dbtools.py` | hosted-database support: `DB_SCHEMA`, schema pinning, migrating into a dedicated schema, Row Level Security, the exposure self-check, connection-URL handling, dedicated-role privileges (the role-based tests need a test user that may `CREATE ROLE` and are skipped otherwise) |
 
 ## 6. Everyday commands
 
@@ -122,7 +124,9 @@ database** - never point it at data you care about. What is covered:
 | `python -m app.cli migrate` | apply migrations |
 | `python -m app.cli create-admin [--username u] [--reset [--disable-2fa]]` | create a panel admin / reset a password (and switch 2FA off after a lost authenticator) |
 | `python -m app.cli gen-wallet [--words 12\|24]` | generate the deposit HD wallet (prints the **xpub** for `.env` and the mnemonic to store **offline**) |
-| `python -m app.cli check` | configuration report (database, bot, RPC, deposits, payouts, Binance, AI) |
+| `python -m app.cli check` | configuration report (database, bot, RPC, deposits, payouts, Binance, AI); on Supabase it also verifies the data is not reachable over its HTTP API |
+| `python -m app.cli admin-exists` | exit status 0 when a panel admin exists (used by the installer) |
+| `python -m app.cli dump-url` | prints `DATABASE_URL` in `pg_dump` / `psql` form **including the password** (used by the backup scripts) |
 | `python -m app.cli reconcile` | verify that every wallet equals the sum of its ledger entries and that the ledger matches deposits / withdrawals |
 | `python -m app.cli rescan --from-block N` | re-read the chain from block N (idempotent) |
 | `python -m app.cli sweep --dry-run` | plan moving deposit-address funds to your treasury wallet |

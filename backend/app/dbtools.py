@@ -9,8 +9,10 @@ On an ordinary PostgreSQL (no such roles) nothing in here changes anything.
 
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import bindparam, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -22,8 +24,17 @@ SUPABASE_HOST_SUFFIXES = (".supabase.co", ".supabase.com")
 Advice = tuple[bool | None, str, str]
 
 
+class SchemaAccessError(RuntimeError):
+    """The database role may not create / use the configured schema. The message says how to fix it."""
+
+
 def quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def _sql_name(name: str) -> str:
+    """A name as one would type it in SQL: quoted only when it has to be."""
+    return name if re.fullmatch(r"[a-z_][a-z0-9_]*", name) else quote_ident(name)
 
 
 async def effective_schema(db: AsyncSession) -> str:
@@ -34,9 +45,30 @@ async def effective_schema(db: AsyncSession) -> str:
     return (await db.execute(text("SELECT current_schema()"))).scalar() or "public"
 
 
-async def schema_exists(db: AsyncSession, name: str) -> bool:
-    row = await db.execute(text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :name"), {"name": name})
-    return row.first() is not None
+def ensure_schema(connection: Connection, schema: str) -> None:
+    """Create ``schema`` unless it exists. Raises ``SchemaAccessError`` when this database role cannot work in it.
+
+    ``pg_namespace`` is consulted, not ``information_schema.schemata``: the latter hides schemas the role has no privilege on,
+    which would turn "belongs to another role" into a baffling 'schema already exists'.
+    """
+    owner = connection.execute(text("SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = :name"), {"name": schema}).scalar()
+    me = connection.execute(text("SELECT current_user")).scalar()
+    if owner is None:
+        if not connection.execute(text("SELECT has_database_privilege(current_database(), 'CREATE')")).scalar():
+            database = connection.execute(text("SELECT current_database()")).scalar()
+            raise SchemaAccessError(
+                f"the database role '{me}' may not create the schema '{schema}'. Ask the database owner to run:  "
+                f"GRANT CREATE ON DATABASE {_sql_name(database)} TO {_sql_name(me)};  "
+                f"(or create it for the role:  CREATE SCHEMA {schema} AUTHORIZATION {_sql_name(me)};)  - see docs/SUPABASE.md"
+            )
+        connection.execute(text(f"CREATE SCHEMA {quote_ident(schema)}"))
+    elif not connection.execute(text("SELECT has_schema_privilege(:name, 'CREATE')"), {"name": schema}).scalar():
+        raise SchemaAccessError(
+            f"the schema '{schema}' exists but belongs to '{owner}', and the database role '{me}' may not create tables in it. "
+            f"Connect as '{owner}' instead, or hand the schema over:  ALTER SCHEMA {schema} OWNER TO {_sql_name(me)};  "
+            f"(and every table in it - see docs/SUPABASE.md, Troubleshooting)"
+        )
+    connection.commit()
 
 
 async def api_roles_present(db: AsyncSession) -> list[str]:
@@ -107,6 +139,21 @@ async def exposure_problems(db: AsyncSession, schema: str) -> list[str]:
     return problems
 
 
+def libpq_url(database_url: str, root_cert: str | None = None) -> str:
+    """``postgresql+asyncpg://u:p@h:5432/db?ssl=require`` -> ``postgresql://u:p@h:5432/db?sslmode=require`` (for pg_dump / psql).
+
+    ``root_cert`` (the path asyncpg reads from ``PGSSLROOTCERT``) is passed on as ``sslrootcert`` for ``verify-ca`` / ``verify-full``.
+    """
+    url = make_url(database_url)
+    query = dict(url.query)
+    ssl = query.pop("ssl", None)
+    if ssl is not None and "sslmode" not in query:
+        query["sslmode"] = ssl if isinstance(ssl, str) else ssl[0]
+    if root_cert and "sslrootcert" not in query:
+        query["sslrootcert"] = root_cert
+    return url.set(drivername="postgresql", query=query).render_as_string(hide_password=False)
+
+
 def hosted_db_advice(database_url: str, schema: str, pool_total: int) -> list[Advice]:
     """Configuration advice that only needs the URL: reads nothing from the database."""
     url = make_url(database_url)
@@ -116,8 +163,9 @@ def hosted_db_advice(database_url: str, schema: str, pool_total: int) -> list[Ad
     advice: list[Advice] = []
     if url.port == 6543:
         advice.append((False, "database port", "6543 is Supabase's transaction pooler, which does not support the prepared statements this app uses - use the session pooler (port 5432)"))
-    if "ssl" not in url.query and "sslmode" not in url.query:
-        advice.append((None, "database SSL", "add ?ssl=require to DATABASE_URL (Supabase accepts unencrypted connections unless SSL is enforced)"))
+    ssl_mode = str(url.query.get("ssl", url.query.get("sslmode", "require")))
+    if ssl_mode in ("disable", "allow", "prefer", "false", "0"):
+        advice.append((None, "database SSL", f"ssl={ssl_mode} may send the password and all data unencrypted - use ssl=require (or verify-full)"))
     if host.startswith("db."):
         advice.append((None, "database host", "the direct connection is IPv6-only unless the project has the IPv4 add-on; from an IPv4-only server use the session pooler host (aws-...pooler.supabase.com:5432)"))
     elif "pooler" in host:

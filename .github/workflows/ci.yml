@@ -6,6 +6,12 @@ on:
 
 jobs:
   backend:
+    # twice: tables in the default schema, and the whole suite inside a dedicated schema (the hosted / Supabase layout, DB_SCHEMA)
+    name: backend (${{ matrix.schema == '' && 'default schema' || format('schema {0}', matrix.schema) }})
+    strategy:
+      fail-fast: false
+      matrix:
+        schema: ["", "qrbot_suite"]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -23,6 +29,7 @@ jobs:
         working-directory: backend
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://qrbot:qrbot@127.0.0.1:5432/qrbot_test
+      DB_SCHEMA: ${{ matrix.schema }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,3 +56,28 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run build
+
+  deploy:
+    # static checks of the deployment files: shell syntax, and the compose file in both database modes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: shell scripts parse
+        run: for f in *.sh; do bash -n "$f"; done
+      - name: compose file, own PostgreSQL container
+        run: |
+          printf 'DOMAIN=admin.example.com\nACME_EMAIL=ops@example.com\nCOMPOSE_PROFILES=local-db\nPOSTGRES_PASSWORD=ci\n' > .env
+          docker compose config --quiet
+          docker compose config --services | grep -qx db
+      - name: compose file, Supabase (no db container)
+        run: |
+          printf 'DOMAIN=admin.example.com\nACME_EMAIL=ops@example.com\nDATABASE_URL=postgresql+asyncpg://postgres.x:pw@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?ssl=require\nDB_SCHEMA=qrbot\n' > .env
+          docker compose config --quiet
+          if docker compose config --services | grep -qx db; then echo "the db service must not be part of the Supabase stack"; exit 1; fi
+      - name: compose file refuses to start without any database setting
+        run: |
+          printf 'DOMAIN=admin.example.com\nACME_EMAIL=ops@example.com\n' > .env
+          if docker compose config --quiet 2>/dev/null; then echo "expected an error: neither POSTGRES_PASSWORD nor DATABASE_URL is set"; exit 1; fi

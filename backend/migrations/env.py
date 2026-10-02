@@ -11,12 +11,13 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool, text
+from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
 from app.db import pin_schema
+from app.dbtools import ensure_schema
 from app.models import Base
 
 config = context.config
@@ -41,16 +42,9 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def _ensure_schema(connection: Connection) -> None:
-    exists = connection.execute(text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :name"), {"name": SCHEMA}).first()
-    if exists is None:  # not "CREATE SCHEMA IF NOT EXISTS": that needs the CREATE privilege even when the schema is already there
-        connection.execute(text(f"CREATE SCHEMA {SCHEMA}"))
-    connection.commit()
-
-
 def _do_run(connection: Connection) -> None:
     if SCHEMA:
-        _ensure_schema(connection)
+        ensure_schema(connection, SCHEMA)  # not "CREATE SCHEMA IF NOT EXISTS": that needs the CREATE privilege even when the schema is there
     context.configure(connection=connection, target_metadata=target_metadata, compare_type=True, version_table_schema=SCHEMA)
     with context.begin_transaction():
         context.run_migrations()

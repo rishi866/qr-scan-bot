@@ -1,6 +1,7 @@
 # QR Exchange - production stack for a single VPS.
 #
-#   db       PostgreSQL 16 (not published: only the other containers can reach it)
+#   db       PostgreSQL 16 (not published: only the other containers can reach it). Optional: it only runs with
+#            COMPOSE_PROFILES=local-db (the default in .env). To use Supabase instead, leave that line out and set DATABASE_URL.
 #   migrate  one-shot: applies the database migrations, then exits
 #   api      FastAPI admin API
 #   bot      Telegram bot + background worker (timers, outbox, blockchain watcher, payouts)
@@ -15,13 +16,14 @@ x-backend: &backend
   image: qrbot-backend:latest
   env_file: .env
   environment:
-    # composed here so the password only has to be written once
-    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-qrbot}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/${POSTGRES_DB:-qrbot}
+    # DATABASE_URL from .env wins (Supabase); otherwise the local container, composed here so the password is written once
+    DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-qrbot}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env (or DATABASE_URL to use Supabase)}@db:5432/${POSTGRES_DB:-qrbot}}
     PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
     ENVIRONMENT: production
     UPLOAD_DIR: /data/uploads
   volumes:
     - uploads:/data/uploads
+    - ./certs:/certs:ro  # optional: the database server's CA certificate for ssl=verify-full (docs/SUPABASE.md)
   logging:
     driver: json-file
     options:
@@ -31,10 +33,11 @@ x-backend: &backend
 services:
   db:
     image: postgres:16-alpine
+    profiles: ["local-db"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-qrbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}  # empty => the postgres image refuses to start (and the installer always sets it)
       POSTGRES_DB: ${POSTGRES_DB:-qrbot}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -55,6 +58,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false  # not part of the stack when the database is hosted elsewhere (Supabase)
     restart: "no"
 
   api:

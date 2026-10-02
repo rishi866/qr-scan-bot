@@ -7,7 +7,8 @@
 #   1. installs Docker + the compose plugin, ufw and fail2ban
 #   2. adds a swap file on small VPSes (the panel build needs ~1.5 GB of memory)
 #   3. firewall: allow SSH, HTTP, HTTPS - nothing else (the database is never published)
-#   4. creates deploy/.env (asks for domain, e-mail, bot token, admin IDs; generates the secrets)
+#   4. creates deploy/.env (asks for domain, e-mail, bot token, admin IDs and where the database lives - a container on
+#      this server or Supabase; generates the secrets)
 #   5. builds and starts the stack, creates the first panel admin, runs `app.cli check`
 set -euo pipefail
 
@@ -64,6 +65,11 @@ put() { # put KEY VALUE - rewrites one line of .env without any shell/sed interp
   printf '%s=%s\n' "$1" "$2" >> "$tmp"
   cat "$tmp" > .env; rm -f "$tmp"
 }
+drop() { # drop KEY - removes a line from .env
+  local tmp; tmp=$(mktemp)
+  grep -v -E "^$1=" .env > "$tmp" || true
+  cat "$tmp" > .env; rm -f "$tmp"
+}
 ask() { # ask VAR "prompt" regex [silent]
   local var=$1 prompt=$2 re=$3 silent=${4:-} val=""
   while true; do
@@ -83,15 +89,35 @@ if [[ ! -f .env ]]; then
   ask TELEGRAM_BOT_TOKEN "Telegram bot token from @BotFather (input hidden)" '^[0-9]{6,}:[A-Za-z0-9_-]{30,}$' silent
   ask ADMIN_TELEGRAM_IDS "Numeric Telegram ID(s) of the admin(s), comma separated (ask @userinfobot)" '^[0-9]+(,[0-9]+)*$'
   put SECRET_KEY "$(openssl rand -hex 32)"
-  put POSTGRES_PASSWORD "$(openssl rand -hex 24)"
+
+  echo
+  echo "Where should the database live?"
+  echo "  1) a PostgreSQL container on this server (default, simplest)"
+  echo "  2) Supabase (managed Postgres) - read docs/SUPABASE.md first and have the session-pooler connection string ready"
+  read -r -p "Choose 1 or 2 [1]: " db_choice
+  if [[ ${db_choice:-1} == 2 ]]; then
+    ask DATABASE_URL "Supabase connection string, session pooler, port 5432 (input hidden)" '^postgres(ql)?(\+asyncpg)?://[^[:space:]$#]+$' silent
+    # the application itself adds the asyncpg driver and SSL, and drops options asyncpg does not know
+    [[ $(get DATABASE_URL) == *":6543/"* ]] && echo "WARNING: port 6543 is the transaction pooler - it breaks prepared statements. Use port 5432 (session pooler)."
+    read -r -p "Schema for the tables [qrbot]: " schema
+    put DB_SCHEMA "${schema:-qrbot}"
+    put DB_POOL_SIZE 3
+    put DB_MAX_OVERFLOW 2
+    drop COMPOSE_PROFILES     # no database container
+    drop POSTGRES_PASSWORD
+  else
+    put COMPOSE_PROFILES local-db
+    put POSTGRES_PASSWORD "$(openssl rand -hex 24)"
+  fi
   echo "Secrets were generated and stored in deploy/.env (mode 600). Back this file up somewhere safe."
 else
   say "deploy/.env already exists - keeping it"
   chmod 600 .env
 fi
-for required in DOMAIN ACME_EMAIL TELEGRAM_BOT_TOKEN ADMIN_TELEGRAM_IDS SECRET_KEY POSTGRES_PASSWORD; do
+for required in DOMAIN ACME_EMAIL TELEGRAM_BOT_TOKEN ADMIN_TELEGRAM_IDS SECRET_KEY; do
   [[ -n "$(get $required)" ]] || { echo "deploy/.env: $required is empty - edit the file and re-run"; exit 1; }
 done
+[[ -n "$(get DATABASE_URL)" || -n "$(get POSTGRES_PASSWORD)" ]] || { echo "deploy/.env: set POSTGRES_PASSWORD (own container) or DATABASE_URL (Supabase) - then re-run"; exit 1; }
 DOMAIN=$(get DOMAIN)
 
 # ── 5. build & start ─────────────────────────────────────────────────────────
@@ -103,9 +129,9 @@ for _ in $(seq 1 60); do
   if [[ "$(docker compose ps --format '{{.Health}}' api 2>/dev/null)" == "healthy" ]]; then ok=1; break; fi
   sleep 3
 done
-[[ ${ok:-0} -eq 1 ]] || { echo "The API did not become healthy. Look at: docker compose logs api migrate db"; exit 1; }
+[[ ${ok:-0} -eq 1 ]] || { echo "The API did not become healthy. Look at: docker compose logs migrate api"; exit 1; }
 
-if [[ -z "$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select 1 from admins limit 1"' 2>/dev/null)" ]]; then
+if ! docker compose run --rm -T api python -m app.cli admin-exists >/dev/null 2>&1; then
   say "Create the first panel admin (pick a strong password, 12+ characters)"
   docker compose run --rm api python -m app.cli create-admin --username admin
 fi

@@ -1,6 +1,6 @@
 """Operations CLI: ``python -m app.cli <command>``.
 
-    migrate        apply database migrations (alembic upgrade head)
+    migrate        apply database migrations (alembic upgrade head); on Supabase also switches Row Level Security on
     create-admin   create (or reset the password of) a web-panel admin
     gen-wallet     generate a fresh HD wallet (mnemonic + xpub) for BEP-20 deposits
     check          verify the configuration (DB, Telegram, RPC, Binance key safety, ...)
@@ -37,10 +37,16 @@ def cmd_migrate(args: argparse.Namespace) -> int:
     from alembic import command
     from alembic.config import Config
 
+    from app import dbtools
+
     root = Path(__file__).resolve().parent.parent
     cfg = Config(str(root / "alembic.ini"))
     cfg.set_main_option("script_location", str(root / "migrations"))
-    command.upgrade(cfg, "head")
+    try:
+        command.upgrade(cfg, "head")
+    except dbtools.SchemaAccessError as exc:
+        print(f"❌ {exc}")
+        return 1
     print("database is up to date")
     try:
         asyncio.run(_harden())
@@ -111,6 +117,34 @@ def cmd_create_admin(args: argparse.Namespace) -> int:
         print("❌ --disable-2fa only works together with --reset (it is the recovery path for a lost authenticator)")
         return 1
     return asyncio.run(_create_admin(args.username, password, args.reset, args.disable_2fa))
+
+
+# ── helpers for the deployment scripts ─────────────────────────────────────
+
+
+def cmd_admin_exists(args: argparse.Namespace) -> int:
+    """Exit status 0 when at least one panel admin exists (used by deploy/install_vps.sh)."""
+
+    async def run() -> bool:
+        from app.db import dispose_engine, session_scope
+        from app.models import Admin
+
+        try:
+            async with session_scope() as db:
+                return (await db.execute(select(Admin.id).limit(1))).first() is not None
+        finally:
+            await dispose_engine()
+
+    return 0 if asyncio.run(run()) else 1
+
+
+def cmd_dump_url(args: argparse.Namespace) -> int:
+    """Print DATABASE_URL in libpq form for pg_dump / psql. CONTAINS THE PASSWORD - only for the backup scripts."""
+    from app import dbtools
+    from app.config import get_settings
+
+    print(dbtools.libpq_url(get_settings().database_url, os.environ.get("PGSSLROOTCERT") or None))
+    return 0
 
 
 # ── gen-wallet ──────────────────────────────────────────────────────────────
@@ -365,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--account", type=int, default=0)
     p.set_defaults(fn=cmd_gen_wallet)
 
+    sub.add_parser("admin-exists", help="exit 0 if a panel admin exists (for scripts)").set_defaults(fn=cmd_admin_exists)
+    sub.add_parser("dump-url", help="print DATABASE_URL in libpq form (contains the password; for the backup scripts)").set_defaults(fn=cmd_dump_url)
     sub.add_parser("check", help="verify configuration").set_defaults(fn=cmd_check)
     sub.add_parser("reconcile", help="verify wallets against the ledger").set_defaults(fn=cmd_reconcile)
 

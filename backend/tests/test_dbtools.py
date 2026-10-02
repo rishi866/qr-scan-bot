@@ -17,7 +17,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app import dbtools
-from app.config import Settings
+from app.config import Settings, normalize_database_url
 from app.db import pin_schema, session_scope
 from app.models import Base
 
@@ -66,6 +66,18 @@ def test_advice_is_silent_for_an_ordinary_database():
     assert dbtools.hosted_db_advice("postgresql+asyncpg://qrbot:pw@db:5432/qrbot", "", 20) == []
 
 
+def test_database_url_is_normalised_for_asyncpg():
+    plain = "postgresql+asyncpg://qrbot:pw@db:5432/qrbot"
+    assert normalize_database_url(plain) == plain  # an ordinary URL is left alone
+    assert normalize_database_url("postgres://u:p%40ss@h:5432/d") == "postgresql+asyncpg://u:p%40ss@h:5432/d"
+    assert normalize_database_url("postgresql://u:p@h/d?sslmode=verify-full") == "postgresql+asyncpg://u:p@h/d?ssl=verify-full"
+    assert normalize_database_url("postgres://u:p@h/d?pgbouncer=true&sslmode=require") == "postgresql+asyncpg://u:p@h/d?ssl=require"
+    # Supabase accepts unencrypted connections, so SSL is switched on unless a mode was chosen
+    assert normalize_database_url("postgres://postgres.x:p@aws-0-ap-south-1.pooler.supabase.com:5432/postgres").endswith("?ssl=require")
+    assert normalize_database_url("postgres://postgres:p@db.x.supabase.co:5432/postgres?ssl=verify-full").endswith("?ssl=verify-full")
+    assert Settings(environment="test", database_url="postgres://u:p@h/d").database_url == "postgresql+asyncpg://u:p@h/d"
+
+
 def test_advice_for_a_correct_supabase_setup_only_mentions_the_pool():
     out = advice(POOLER + "?ssl=require")
     assert set(out) == {"connection pool"} and out["connection pool"][0] is None
@@ -77,12 +89,24 @@ def test_advice_flags_the_transaction_pooler_as_a_problem():
     assert status is False and "prepared statements" in detail
 
 
-def test_advice_asks_for_ssl_a_schema_and_explains_the_direct_host():
-    out = advice("postgresql+asyncpg://postgres:pw@db.abcd.supabase.co:5432/postgres", schema="")
-    assert out["database SSL"][0] is None and "ssl=require" in out["database SSL"][1]
+def test_advice_asks_for_a_schema_explains_the_direct_host_and_objects_to_weakened_ssl():
+    out = advice("postgresql+asyncpg://postgres:pw@db.abcd.supabase.co:5432/postgres?ssl=require", schema="")
     assert out["DB_SCHEMA"][0] is None and "public" in out["DB_SCHEMA"][1]
     assert "IPv6" in out["database host"][1]
-    assert "database SSL" not in advice(POOLER + "?sslmode=require")
+    assert "database SSL" not in out
+    weak = advice(POOLER + "?ssl=prefer")["database SSL"]
+    assert weak[0] is None and "unencrypted" in weak[1]
+
+
+def test_libpq_url_translates_the_sqlalchemy_url_for_pg_dump():
+    assert dbtools.libpq_url(POOLER + "?ssl=require") == "postgresql://postgres.abcd:pw@aws-0-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require"
+    assert dbtools.libpq_url("postgresql+asyncpg://qrbot:s%40crt@db:5432/qrbot") == "postgresql://qrbot:s%40crt@db:5432/qrbot"  # encoded password survives
+    assert "sslmode=verify-full" in dbtools.libpq_url(POOLER + "?ssl=verify-full")
+    assert dbtools.libpq_url(POOLER + "?sslmode=require&ssl=disable").count("sslmode") == 1  # an explicit libpq setting wins
+    # a CA file for verify-full travels along, so pg_dump / psql in their own container can verify the server too
+    verified = dbtools.libpq_url(POOLER + "?ssl=verify-full", "/certs/ca.crt")
+    assert dict(make_url(verified).query) == {"sslmode": "verify-full", "sslrootcert": "/certs/ca.crt"}  # (percent-encoded in the string; libpq decodes it)
+    assert "sslrootcert" not in dbtools.libpq_url(POOLER + "?ssl=require")
 
 
 # ── schema pinning ──────────────────────────────────────────────────────────
@@ -144,9 +168,9 @@ async def supabase_roles():
 # ── migrating into a dedicated schema ───────────────────────────────────────
 
 
-def run_cli(url: str, schema: str, *args: str) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "DATABASE_URL": url, "DB_SCHEMA": schema}
-    return subprocess.run([sys.executable, "-m", "app.cli", *args], cwd=BACKEND, env=env, capture_output=True, text=True, timeout=120, check=False)
+def run_cli(url: str, schema: str, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    full_env = {**os.environ, "DATABASE_URL": url, "DB_SCHEMA": schema, **(env or {})}
+    return subprocess.run([sys.executable, "-m", "app.cli", *args], cwd=BACKEND, env=full_env, capture_output=True, text=True, timeout=120, check=False)
 
 
 @asynccontextmanager
@@ -201,6 +225,110 @@ async def test_migrate_switches_row_level_security_on_when_supabase_roles_exist(
         assert again.returncode == 0 and "switched on" not in again.stdout
         checked = run_cli(url, schema, "check")
         assert "exposed over HTTP - no" in checked.stdout
+
+
+# ── helpers the deployment scripts call ─────────────────────────────────────
+
+
+async def test_admin_exists_reports_through_its_exit_status():
+    async with scratch_database() as url:
+        assert run_cli(url, "qrbot_app", "migrate").returncode == 0
+        assert run_cli(url, "qrbot_app", "admin-exists").returncode == 1  # nobody yet: the installer then asks for a password
+        created = run_cli(url, "qrbot_app", "create-admin", "--username", "boss", env={"ADMIN_PASSWORD": "Correct-Horse-Battery-77"})
+        assert created.returncode == 0, created.stdout + created.stderr
+        assert run_cli(url, "qrbot_app", "admin-exists").returncode == 0
+
+
+def test_dump_url_prints_the_libpq_form_and_nothing_else():
+    out = run_cli("postgres://u:p%40ss@aws-0-x.pooler.supabase.com:5432/postgres", "qrbot", "dump-url")
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "postgresql://u:p%40ss@aws-0-x.pooler.supabase.com:5432/postgres?sslmode=require"
+
+
+# ── a dedicated database role (needs CREATEROLE to set up; skipped otherwise) ──
+
+
+@pytest_asyncio.fixture
+async def plain_role():
+    """A login role without any privileges beyond connecting - what a freshly created dedicated role is. Yields its name."""
+    name = f"qrbot_role_{suffix()}"
+    engine = create_async_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(f"CREATE ROLE {name} LOGIN PASSWORD 'pw'"))
+    except DBAPIError:
+        await engine.dispose()
+        pytest.skip("the database user cannot create roles (needs CREATEROLE)")
+    yield name
+    async with engine.connect() as conn:  # the scratch database, and with it everything the role owned, is gone by now
+        await conn.execute(text(f"DROP ROLE IF EXISTS {name}"))
+    await engine.dispose()
+
+
+def as_role(url: str, role: str) -> str:
+    return make_url(url).set(username=role, password="pw").render_as_string(hide_password=False)
+
+
+async def ensure_schema_as(url: str, role: str, schema: str) -> None:
+    engine = create_async_engine(as_role(url, role))
+    try:
+        async with engine.connect() as conn:
+            await conn.run_sync(dbtools.ensure_schema, schema)
+    finally:
+        await engine.dispose()
+
+
+async def test_ensure_schema_creates_a_missing_schema_and_leaves_an_existing_one_alone():
+    schema = f"ens_{suffix()}"
+    engine = create_async_engine(DATABASE_URL)
+    try:
+        for _ in range(2):  # the second run finds it and does nothing
+            async with engine.connect() as conn:
+                await conn.run_sync(dbtools.ensure_schema, schema)
+        async with engine.connect() as conn:
+            assert (await conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"), {"s": schema})).scalar() == 1
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+        await engine.dispose()
+
+
+async def test_a_role_that_may_not_create_schemas_is_told_what_to_grant(plain_role):
+    async with scratch_database() as url:
+        with pytest.raises(dbtools.SchemaAccessError) as err:
+            await ensure_schema_as(url, plain_role, "qrbot")
+        message = str(err.value)
+        assert f"GRANT CREATE ON DATABASE {make_url(url).database} TO {plain_role}" in message
+        assert "AUTHORIZATION" in message and "docs/SUPABASE.md" in message
+
+        admin = create_async_engine(url, isolation_level="AUTOCOMMIT")
+        async with admin.connect() as conn:  # the fix the message names
+            await conn.execute(text(f'GRANT CREATE ON DATABASE "{make_url(url).database}" TO {plain_role}'))
+        await ensure_schema_as(url, plain_role, "qrbot")
+        async with admin.connect() as conn:
+            owner = (await conn.execute(text("SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'qrbot'"))).scalar()
+        await admin.dispose()
+        assert owner == plain_role  # the app's own role owns its schema - so Row Level Security never applies to it
+
+
+async def test_a_schema_that_belongs_to_another_role_is_explained_not_reported_as_existing(plain_role):
+    async with scratch_database() as url:
+        admin = create_async_engine(url, isolation_level="AUTOCOMMIT")
+        async with admin.connect() as conn:
+            await conn.execute(text("CREATE SCHEMA qrbot"))  # created by the test user, as when the first migration ran with the master role
+        await admin.dispose()
+        with pytest.raises(dbtools.SchemaAccessError) as err:
+            await ensure_schema_as(url, plain_role, "qrbot")
+        message = str(err.value)
+        assert "belongs to" in message and f"ALTER SCHEMA qrbot OWNER TO {plain_role}" in message
+
+
+async def test_migrate_prints_the_fix_instead_of_a_traceback_when_the_role_lacks_privileges(plain_role):
+    async with scratch_database() as url:
+        out = run_cli(as_role(url, plain_role), "qrbot", "migrate")
+        assert out.returncode == 1
+        assert "❌" in out.stdout and "GRANT CREATE ON DATABASE" in out.stdout
+        assert "Traceback" not in out.stderr
 
 
 # ── Row Level Security (needs Supabase's roles; skipped when the test user may not create roles) ──
