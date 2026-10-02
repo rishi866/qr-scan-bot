@@ -53,3 +53,20 @@ async def db():
     async with app_db.get_sessionmaker()() as session:
         yield session
         await session.rollback()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def api():
+    """An ``httpx`` client already logged in as an admin (cookie + CSRF header)."""
+    import httpx
+
+    from app.api import security
+    from app.api.main import app
+    from tests.api_helpers import CSRF, login, make_admin
+
+    security.login_limiter.reset()
+    await make_admin()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", headers=CSRF) as client:
+        response = await login(client)
+        assert response.status_code == 200, response.text
+        yield client

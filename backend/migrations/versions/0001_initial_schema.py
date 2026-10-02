@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-10-02 15:26:02.843521
+Create Date: 2026-10-02 16:03:00.823046
 """
 from typing import Sequence, Union
 
@@ -24,6 +24,7 @@ def upgrade() -> None:
     sa.Column('password_hash', sa.String(length=255), nullable=False),
     sa.Column('totp_secret_enc', sa.Text(), nullable=True),
     sa.Column('totp_enabled', sa.Boolean(), server_default=sa.text('false'), nullable=False),
+    sa.Column('last_totp_step', sa.BigInteger(), nullable=True),
     sa.Column('token_version', sa.Integer(), server_default=sa.text('0'), nullable=False),
     sa.Column('failed_attempts', sa.Integer(), server_default=sa.text('0'), nullable=False),
     sa.Column('locked_until', sa.DateTime(timezone=True), nullable=True),

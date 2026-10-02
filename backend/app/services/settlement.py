@@ -6,6 +6,7 @@ session -> scanner user -> wallets, always).
 
 from __future__ import annotations
 
+import datetime as dt
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -78,11 +79,11 @@ async def get_transaction(db: AsyncSession, session_id: int) -> TransactionHisto
 
 
 async def record_transaction(
-    db: AsyncSession, s: TaskSession, seller: User, scanner: User, status: TxStatus
+    db: AsyncSession, s: TaskSession, seller: User, scanner: User, status: TxStatus, now: dt.datetime | None = None
 ) -> TransactionHistory:
     """Create (or update the status of) the transaction record of a session."""
     tx = await get_transaction(db, s.session_id)
-    now = utcnow()
+    now = now or utcnow()
     if tx is None:
         tx = TransactionHistory(
             session_id=s.session_id,

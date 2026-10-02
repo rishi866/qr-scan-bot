@@ -416,6 +416,7 @@ class Admin(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     totp_secret_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted base32 secret
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    last_totp_step: Mapped[int | None] = mapped_column(BigInteger)  # replay protection: a code works once
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default=ZERO, nullable=False)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=ZERO, nullable=False)
     locked_until: Mapped[dt.datetime | None] = mapped_column(TS)

@@ -241,7 +241,7 @@ async def confirm(
     s.confirmed_at = now
     s.deadline_at = None
     s.closed_reason = "auto_confirmed" if auto else "confirmed"
-    await settlement.record_transaction(db, s, seller, scanner, TxStatus.COMPLETED)
+    await settlement.record_transaction(db, s, seller, scanner, TxStatus.COMPLETED, now)
     await users.adjust_reputation(db, scanner, settlement.REP_CONFIRMED)
     await outbox.notify_user(db, scanner, texts.scanner_paid(s.session_id, s.amount, scanner_balance))
     if auto:

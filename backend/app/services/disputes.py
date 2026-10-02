@@ -73,7 +73,7 @@ async def open_dispute(
     )
     db.add(dispute)
     await db.flush()
-    await settlement.record_transaction(db, s, seller, scanner, TxStatus.DISPUTED)
+    await settlement.record_transaction(db, s, seller, scanner, TxStatus.DISPUTED, now)
 
     # the scanner's next photo is the proof; the seller may add one optional text note
     await users.set_state(
@@ -185,7 +185,13 @@ async def apply_ai_result(db: AsyncSession, dispute_id: int, verdict: dict[str, 
 
 
 async def resolve(
-    db: AsyncSession, dispute_id: int, resolution: DisputeResolution, *, by: str, notes: str | None = None
+    db: AsyncSession,
+    dispute_id: int,
+    resolution: DisputeResolution,
+    *,
+    by: str,
+    notes: str | None = None,
+    now: dt.datetime | None = None,
 ) -> Dispute:
     s = await _lock_session_of(db, dispute_id)
     dispute = await _lock_dispute(db, dispute_id)
@@ -196,14 +202,14 @@ async def resolve(
 
     scanner = await users.require_user(db, s.scanner_id, lock=True)
     seller = await users.require_user(db, s.seller_id)
-    now = utcnow()
+    now = now or utcnow()
 
     if resolution == DisputeResolution.PAY_SCANNER:
         scanner_balance, _ = await settlement.pay(db, s)
         s.status = SessionStatus.CONFIRMED.value
         s.confirmed_at = now
         s.closed_reason = "dispute_rejected"
-        await settlement.record_transaction(db, s, seller, scanner, TxStatus.COMPLETED)
+        await settlement.record_transaction(db, s, seller, scanner, TxStatus.COMPLETED, now)
         dispute.status = DisputeStatus.REJECTED.value
         await users.adjust_reputation(db, scanner, settlement.REP_DISPUTE_WON)
         await outbox.notify_user(db, scanner, texts.scanner_dispute_paid(s.session_id, s.amount))
@@ -212,7 +218,7 @@ async def resolve(
         await settlement.release(db, s, f"dispute #{dispute.id} refund")
         s.status = SessionStatus.REFUNDED.value
         s.closed_reason = "dispute_upheld"
-        await settlement.record_transaction(db, s, seller, scanner, TxStatus.REFUNDED)
+        await settlement.record_transaction(db, s, seller, scanner, TxStatus.REFUNDED, now)
         dispute.status = DisputeStatus.RESOLVED.value
         await users.adjust_reputation(db, scanner, settlement.REP_DISPUTE_LOST)
         await outbox.notify_user(db, seller, texts.seller_dispute_refunded(s.session_id, settlement.session_cost(s)))

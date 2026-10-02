@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from sqlalchemy import select
 from telegram import Bot
 
 from app.bot import delivery
@@ -21,9 +22,13 @@ from app.chain.payout import run_payouts
 from app.chain.watcher import scan_deposits
 from app.config import get_settings
 from app.db import session_scope
+from app.models import KVState
 from app.services import payments, scheduler
+from app.timeutil import utcnow
 
 log = logging.getLogger(__name__)
+
+HEARTBEAT_KEY = "worker_heartbeat"
 
 
 async def _loop(name: str, interval: float, fn: Callable[[], Awaitable[object]]) -> None:
@@ -40,6 +45,16 @@ async def _loop(name: str, interval: float, fn: Callable[[], Awaitable[object]])
             delay = min(interval * 2**min(failures, 5), 120)
             log.exception("worker loop %r failed (%d in a row) - retrying in %.0fs", name, failures, delay)
             await asyncio.sleep(delay)
+
+
+async def _heartbeat() -> None:
+    """Lets the admin dashboard show whether the bot worker is alive."""
+    async with session_scope() as db:
+        row = (await db.execute(select(KVState).where(KVState.key == HEARTBEAT_KEY).with_for_update())).scalar_one_or_none()
+        if row is None:
+            db.add(KVState(key=HEARTBEAT_KEY, value=utcnow().isoformat()))
+        else:
+            row.value = utcnow().isoformat()
 
 
 async def _prepare_chain() -> AsyncBsc | None:
@@ -70,6 +85,7 @@ async def run_worker(bot: Bot) -> None:
     """Runs until cancelled."""
     await scheduler.reset_running_ai()
     loops: list[Awaitable[None]] = [
+        _loop("heartbeat", 15.0, _heartbeat),
         _loop("outbox", 1.0, lambda: delivery.deliver_due(bot)),
         _loop("sessions", 5.0, scheduler.tick_sessions),
         _loop("disputes", 15.0, scheduler.tick_disputes),
