@@ -96,7 +96,7 @@ rows end up as *failed* (harmless). The seeder refuses to run when `ENVIRONMENT=
 
 ```bash
 cd backend
-pytest -q                 # 226 tests, ~40 s
+pytest -q                 # 227 tests, ~40 s
 ruff check .
 ```
 
