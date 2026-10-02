@@ -1,8 +1,9 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
-import { Icon, Mono } from "@/components/ui";
+import { Icon, Mono, Select } from "@/components/ui";
 import { useToast } from "@/components/feedback";
+import { useApi } from "@/lib/api";
 import { copyText, flag, shortHash } from "@/lib/format";
 
 /** The page's query string, available after mount (null during the first render). */
@@ -74,4 +75,15 @@ export function timeZoneOptions(): string[] {
   } catch {
     return [];
   }
+}
+
+/** Drop-down of the countries our users come from (code + name + head count). */
+export function CountrySelect({ value, onChange }: { value: string; onChange: (code: string) => void }) {
+  const { data } = useApi<{ items: { code: string; name: string; count: number }[] }>("/api/users/countries");
+  return (
+    <Select value={value} onChange={(e) => onChange(e.target.value)} className="!w-auto" aria-label="Country">
+      <option value="">All countries</option>
+      {data?.items.map((c) => <option key={c.code} value={c.code}>{flag(c.code)} {c.name} ({c.count})</option>)}
+    </Select>
+  );
 }

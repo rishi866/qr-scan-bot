@@ -174,7 +174,7 @@ sudo useradd --system --create-home --home-dir /var/lib/qrbot qrbot
 sudo -u postgres createuser qrbot && sudo -u postgres createdb -O qrbot qrbot
 cd /opt/qr-scan-bot/backend && python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd ../frontend && npm ci && npm run build                          # → frontend/out
-sudo install -d -m 750 -o root -g qrbot /etc/qrbot && sudo cp ../deploy/.env.example /etc/qrbot/qrbot.env   # edit; DATABASE_URL=postgresql+asyncpg://qrbot:...@127.0.0.1/qrbot, UPLOAD_DIR=/var/lib/qrbot/uploads
+sudo install -d -m 750 -o root -g qrbot /etc/qrbot && sudo cp ../deploy/.env.example /etc/qrbot/qrbot.env   # edit; add DATABASE_URL=postgresql+asyncpg://qrbot:...@127.0.0.1/qrbot, UPLOAD_DIR=/var/lib/qrbot/uploads, PUBLIC_BASE_URL=https://admin.example.com
 cd ../backend && set -a && . /etc/qrbot/qrbot.env && set +a && .venv/bin/python -m app.cli migrate
 sudo cp ../deploy/systemd/*.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now qrbot-api qrbot-bot
 sudo cp ../deploy/systemd/Caddyfile.baremetal /etc/caddy/Caddyfile      # edit domain / e-mail

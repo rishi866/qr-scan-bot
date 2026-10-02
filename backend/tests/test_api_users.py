@@ -241,3 +241,17 @@ async def test_sidebar_badges(api):
     assert (await api.get("/api/badges")).json() == {
         "pending_users": 1, "open_disputes": 0, "withdrawals_to_handle": 0, "deposits_to_review": 0, "scanners_needing_name": 1,
     }
+
+
+async def test_country_filter_and_country_list(api):
+    await seed_users()  # GB seller (pending), IN seller, IN scanner, onboarding scanner without a country
+    countries = (await api.get("/api/users/countries")).json()["items"]
+    assert countries == [
+        {"code": "IN", "name": "India", "count": 2},
+        {"code": "GB", "name": "United Kingdom", "count": 1},
+    ]
+    assert (await api.get("/api/users?country=in")).json()["total"] == 2
+    assert (await api.get("/api/users?country=GB")).json()["items"][0]["name"] == "Pat Pending"
+    assert (await api.get("/api/scanners?country=IN")).json()["total"] == 1
+    assert (await api.get("/api/scanners?country=GB")).json()["total"] == 0
+    assert (await api.get("/api/users?country=ZZZ")).status_code == 422  # must be a 2-letter code

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useDebounced, useInitialParams, FilterBar, PersonCell } from "@/components/common";
+import { CountrySelect, useDebounced, useInitialParams, FilterBar, PersonCell } from "@/components/common";
 import { DataTable, Pagination, type Column } from "@/components/DataTable";
 import { useConfirm, useToast } from "@/components/feedback";
 import { UserDetailModal } from "@/components/UserDetail";
@@ -19,6 +19,7 @@ export default function UsersPage() {
   const [ready, setReady] = useState(false);
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
+  const [country, setCountry] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<number | null>(null);
@@ -33,7 +34,7 @@ export default function UsersPage() {
     setReady(true);
   }, [initial]);
 
-  const { data, error, loading, reload } = useApi<Page<UserRow>>(ready ? "/api/users" : null, { role, status, q, page, page_size: PAGE_SIZE });
+  const { data, error, loading, reload } = useApi<Page<UserRow>>(ready ? "/api/users" : null, { role, status, country, q, page, page_size: PAGE_SIZE });
 
   const decide = async (u: UserRow, action: "approve" | "reject") => {
     if (action === "reject") {
@@ -99,6 +100,7 @@ export default function UsersPage() {
             <option value="rejected">Rejected</option>
             <option value="suspended">Suspended</option>
           </Select>
+          <CountrySelect value={country} onChange={change(setCountry)} />
           <Button variant="ghost" icon="refresh" onClick={reload}>Refresh</Button>
         </FilterBar>
         {error && <div className="p-4 text-sm text-bad">{error}</div>}

@@ -92,6 +92,20 @@ async def list_users(
     return page_response([user_json(u, w, counts.get(u.user_id)) for u, w in rows], total, params)
 
 
+@router.get("/users/countries")
+async def user_countries(_: CurrentAdmin, db: Db):
+    """Countries that registered users come from (for the filter drop-downs); declared before ``/users/{user_id}``."""
+    rows = (
+        await db.execute(
+            select(User.country, func.count())
+            .where(User.country.is_not(None), User.status != UserStatus.ONBOARDING.value)
+            .group_by(User.country)
+            .order_by(func.count().desc(), User.country)
+        )
+    ).all()
+    return {"items": [{"code": code, "name": timeutil.country_name(code), "count": n} for code, n in rows]}
+
+
 @router.get("/users/{user_id}")
 async def user_detail(user_id: int, _: CurrentAdmin, db: Db):
     user = await users.get_user(db, user_id)
@@ -218,12 +232,15 @@ async def list_scanners(
     params: Pages,
     q: str | None = Query(None, max_length=100),
     status: str | None = None,
+    country: str | None = Query(None, min_length=2, max_length=2),
     needs_name: bool = False,
     active_now: bool = False,
 ):
     stmt = select(User).where(User.role == Role.SCANNER.value, User.status != UserStatus.ONBOARDING.value)
     if status in {s.value for s in UserStatus}:
         stmt = stmt.where(User.status == status)
+    if country:
+        stmt = stmt.where(User.country == country.upper())
     if needs_name:
         stmt = stmt.where(User.alias.is_(None), User.status == UserStatus.APPROVED.value)
     if q:

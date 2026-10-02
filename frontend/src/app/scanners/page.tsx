@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FilterBar, PersonCell, useDebounced, useInitialParams } from "@/components/common";
+import { CountrySelect, FilterBar, PersonCell, useDebounced, useInitialParams } from "@/components/common";
 import { DataTable, Pagination, type Column } from "@/components/DataTable";
 import { useToast } from "@/components/feedback";
 import { ScannerModal } from "@/components/ScannerModal";
@@ -17,6 +17,7 @@ export default function ScannersPage() {
   const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState("");
   const [status, setStatus] = useState("");
+  const [country, setCountry] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -31,7 +32,7 @@ export default function ScannersPage() {
   }, [initial]);
 
   const { data, error, loading, reload } = useApi<Page<ScannerRow>>(ready ? "/api/scanners" : null, {
-    q, status, page, page_size: PAGE_SIZE, needs_name: filter === "needs_name", active_now: filter === "active_now",
+    q, status, country, page, page_size: PAGE_SIZE, needs_name: filter === "needs_name", active_now: filter === "active_now",
   });
 
   const autoName = useCallback(async (s: ScannerRow) => {
@@ -101,6 +102,7 @@ export default function ScannersPage() {
             <option value="suspended">Suspended</option>
             <option value="rejected">Rejected</option>
           </Select>
+          <CountrySelect value={country} onChange={resetPage(setCountry)} />
           <Button variant="ghost" icon="refresh" onClick={reload}>Refresh</Button>
         </FilterBar>
         {error && <div className="p-4 text-sm text-bad">{error}</div>}
