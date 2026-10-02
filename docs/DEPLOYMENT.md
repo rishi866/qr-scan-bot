@@ -149,7 +149,7 @@ sudo crontab -u deploy -e
 17 3 * * *  cd /opt/qr-scan-bot/deploy && ./backup.sh >> backups/backup.log 2>&1
 ```
 
-A backup that only exists on the server is not a backup: copy `deploy/backups/` off the machine (`rclone`, `scp`, a second VPS, object storage). Also keep an
+A backup that only exists on the server is not a backup: copy `deploy/backups/` off the machine (`rclone`, `scp`, a second VPS, object storage) - **encrypted** (`gpg --symmetric --cipher-algo AES256 file` or `age`), because the dump contains personal data (names, Telegram IDs, payout addresses). Also keep an
 offline copy of **`deploy/.env`** - without `SECRET_KEY` the 2FA secrets in a restored database cannot be decrypted. **The deposit mnemonic is never on the server**; store it separately.
 
 ### Monitoring

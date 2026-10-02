@@ -137,6 +137,7 @@ The panel is type-checked and built in CI; its screens and write flows were veri
 * **Binance** verification follows Binance's documented API but was never run against a live account; unknown shapes fall back to manual confirmation.
 * **The AI check** (Anthropic API) is optional and was exercised with a fake client in tests and by code review of the request format, not against the live service.
 * **Commission** is charged to the sender on top of the reward (a design decision; see PAYMENTS.md to change it). Auto-confirm after 60 minutes of seller silence is a default that the admin can change or disable.
+* **Dependency audit** (run on the pinned versions): `npm audit` reports 0 vulnerabilities. `pip-audit` reports python-ecdsa (CVE-2024-23342, a timing attack on **P-256** signing, no upstream fix) as a transitive dependency of `bip-utils`. This project only uses secp256k1, which bip-utils serves through `coincurve`, and never signs anything with python-ecdsa, so the issue is not reachable. Re-run both audits before every release.
 * Telegram long polling, one bot process. Webhook mode and horizontal scaling are not implemented.
 * English only (all text in `app/texts.py`, easy to translate).
 * Operating this service legally and within the terms of the involved platforms is the operator's responsibility.
