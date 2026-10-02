@@ -1,0 +1,17 @@
+# Build context of the `web` image (deploy/web.Dockerfile, context = repository root).
+# Keeps secrets, backups, history and local build output out of what is sent to the Docker daemon.
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+frontend/.next
+frontend/out
+backend
+docs
+deploy/.env
+deploy/.env.*
+deploy/backups
+deploy/certs
+**/.env

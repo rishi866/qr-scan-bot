@@ -77,7 +77,98 @@ jobs:
           printf 'DOMAIN=admin.example.com\nACME_EMAIL=ops@example.com\nDATABASE_URL=postgresql+asyncpg://postgres.x:pw@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?ssl=require\nDB_SCHEMA=qrbot\n' > .env
           docker compose config --quiet
           if docker compose config --services | grep -qx db; then echo "the db service must not be part of the Supabase stack"; exit 1; fi
-      - name: compose file refuses to start without any database setting
+          warnings=$(docker compose config 2>&1 >/dev/null)
+          if [ -n "$warnings" ]; then echo "unexpected compose warnings: $warnings"; exit 1; fi
+          docker compose config | grep -q 'DATABASE_URL: postgresql+asyncpg://postgres.x:pw@aws-0-eu-west-1' || { echo "DATABASE_URL from .env must win"; exit 1; }
+
+  stack:
+    # Builds the images and runs the real stack with Docker - once with the PostgreSQL container, once with a database that is not
+    # part of the stack (the CI Postgres stands in for Supabase): migrations, API, HTTPS front end, first admin, backup and restore.
+    name: stack (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [container, hosted]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qrbot
+          POSTGRES_PASSWORD: qrbot
+          POSTGRES_DB: qrbot_hosted
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qrbot -d qrbot_hosted"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: deploy
+    env:
+      PG_CLIENT_VERSION: "16"   # the same major version as the CI database (backup.sh / restore.sh use it for pg_dump / psql)
+    steps:
+      - uses: actions/checkout@v4
+      - name: deploy/.env
         run: |
-          printf 'DOMAIN=admin.example.com\nACME_EMAIL=ops@example.com\n' > .env
-          if docker compose config --quiet 2>/dev/null; then echo "expected an error: neither POSTGRES_PASSWORD nor DATABASE_URL is set"; exit 1; fi
+          {
+            echo "DOMAIN=localhost"
+            echo "ACME_EMAIL=ci@example.com"
+            echo "SECRET_KEY=$(openssl rand -hex 32)"
+            echo "TELEGRAM_BOT_TOKEN=123456:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            echo "ADMIN_TELEGRAM_IDS=1"
+            if [ "${{ matrix.mode }}" = container ]; then
+              echo "COMPOSE_PROFILES=local-db"
+              echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            else
+              echo "DATABASE_URL=postgresql+asyncpg://qrbot:qrbot@$(hostname -I | awk '{print $1}'):5432/qrbot_hosted"
+              echo "DB_SCHEMA=qrbot"
+              echo "DB_POOL_SIZE=3"
+              echo "DB_MAX_OVERFLOW=2"
+            fi
+          } > .env
+      - name: build the images and start db / migrate / api / web
+        run: docker compose up -d --build api web
+      - name: wait for the API to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            [ "$(docker compose ps --format '{{.Health}}' api)" = healthy ] && exit 0
+            sleep 3
+          done
+          docker compose ps -a
+          docker compose logs --tail=100 migrate api
+          exit 1
+      - name: the tables are where they belong
+        run: |
+          if [ "${{ matrix.mode }}" = hosted ]; then
+            psql() { PGPASSWORD=qrbot command psql -h 127.0.0.1 -U qrbot -d qrbot_hosted -qAt "$@"; }
+            [ "$(psql -c "select count(*) from information_schema.tables where table_schema = 'public'")" = 0 ]
+            [ "$(psql -c "select count(*) from information_schema.tables where table_schema = 'qrbot'")" -gt 10 ]
+            [ "$(psql -c "select version_num from qrbot.alembic_version")" = 0001 ]
+          else
+            [ "$(docker compose exec -T db psql -U qrbot -d qrbot -qAt -c "select version_num from public.alembic_version")" = 0001 ]
+          fi
+      - name: the front end answers over HTTPS and reaches the database
+        run: |
+          for i in $(seq 1 30); do curl -4ksf https://localhost/api/health >/dev/null && break; sleep 2; done
+          curl -4ksf https://localhost/api/health | tee /dev/stderr | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['database'] is True, d"
+          test "$(curl -4ks -o /dev/null -w '%{http_code}' https://localhost/)" = 200
+          curl -4ksI https://localhost/ | grep -i '^content-security-policy'
+          curl -4ksI https://localhost/tz.html | grep -i 'frame-ancestors'
+      - name: first panel admin
+        run: |
+          if docker compose run --rm -T api python -m app.cli admin-exists; then echo "no admin should exist yet"; exit 1; fi
+          docker compose run --rm -T -e ADMIN_PASSWORD='Correct-Horse-Battery-77' api python -m app.cli create-admin --username ci_admin
+          docker compose run --rm -T api python -m app.cli admin-exists
+      - name: backup, then restore, with the real scripts
+        run: |
+          ./backup.sh
+          ls -l backups
+          docker compose run --rm -T api python -m app.cli reconcile
+          echo RESTORE | ./restore.sh "$(ls -t backups/db-*.sql.gz | head -1)"
+          docker compose run --rm -T api python -m app.cli admin-exists
+      - name: logs (on failure)
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=150

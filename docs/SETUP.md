@@ -96,7 +96,7 @@ rows end up as *failed* (harmless). The seeder refuses to run when `ENVIRONMENT=
 
 ```bash
 cd backend
-pytest -q                 # 257 tests, ~1 min
+pytest -q                 # 258 tests, ~1 min
 ruff check .
 DB_SCHEMA=qrbot_suite pytest -q    # the same suite with every table in a dedicated schema (the hosted / Supabase layout; CI runs both)
 ```

@@ -45,6 +45,16 @@ def test_db_schema_setting_accepts_plain_identifiers_only():
             Settings(environment="test", db_schema=bad)
 
 
+def test_production_refuses_the_db_container_without_a_password():
+    strong = "0123456789abcdef" * 4
+    # what docker-compose composes when neither POSTGRES_PASSWORD nor DATABASE_URL was set in deploy/.env
+    with pytest.raises(ValueError, match="POSTGRES_PASSWORD"):
+        Settings(environment="production", secret_key=strong, database_url="postgresql+asyncpg://qrbot:@db:5432/qrbot")
+    assert Settings(environment="production", secret_key=strong, database_url="postgresql+asyncpg://qrbot:pw@db:5432/qrbot")
+    assert Settings(environment="production", secret_key=strong, database_url="postgresql+asyncpg://u:pw@aws-0-x.pooler.supabase.com:5432/postgres")
+    assert Settings(environment="development", database_url="postgresql+asyncpg://qrbot:@db:5432/qrbot")  # only production insists
+
+
 def test_pool_settings_have_sane_bounds():
     assert Settings(environment="test").db_pool_size == 10
     with pytest.raises(ValueError):

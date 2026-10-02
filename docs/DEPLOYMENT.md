@@ -7,7 +7,7 @@ This guide takes you from "I have nothing" to a running bot and panel on **one V
 > `/api/health`, docs disabled) started from only the files the Dockerfile copies. What was **not** possible: building the images (no Docker daemon was available) and running the stack on a real VPS with a real domain.
 > Do the first install on a throw-away server (or on the real one before any user exists) and read the output of every step.
 >
-> The **Supabase mode** ([SUPABASE.md](SUPABASE.md)) was checked the same way (compose file in both modes, `bash -n`); `backup.sh` / `restore.sh` run in the test suite against a local PostgreSQL through a stand-in `docker` command, and the SQL,
+> The **Supabase mode** ([SUPABASE.md](SUPABASE.md)) was checked the same way (compose file in both modes and on three Compose versions, `bash -n`); `backup.sh` / `restore.sh` run in the test suite against a local PostgreSQL through a stand-in `docker` command, and the SQL,
 > URL handling and permission logic were run against it with simulated Supabase roles. It has **not** been run against a real Supabase project, with a Docker daemon, or from a VPS.
 
 ## 0. What you need

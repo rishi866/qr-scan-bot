@@ -153,6 +153,12 @@ class Settings(BaseSettings):
                     "SECRET_KEY must be set to a random string of at least 32 characters "
                     "(e.g. `openssl rand -hex 32`) when ENVIRONMENT=production"
                 )
+            url = make_url(self.database_url)
+            if url.host == "db" and not url.password:  # docker-compose composes this URL from POSTGRES_PASSWORD
+                raise ValueError(
+                    "DATABASE_URL points at the 'db' container but has no password: set POSTGRES_PASSWORD in deploy/.env "
+                    "(own PostgreSQL container) or DATABASE_URL (a hosted database such as Supabase, see docs/SUPABASE.md)"
+                )
         return self
 
     # ── helpers ────────────────────────────────────────────────────────────

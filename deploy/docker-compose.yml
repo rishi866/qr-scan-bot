@@ -16,8 +16,10 @@ x-backend: &backend
   image: qrbot-backend:latest
   env_file: .env
   environment:
-    # DATABASE_URL from .env wins (Supabase); otherwise the local container, composed here so the password is written once
-    DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-qrbot}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env (or DATABASE_URL to use Supabase)}@db:5432/${POSTGRES_DB:-qrbot}}
+    # DATABASE_URL from .env wins (Supabase); otherwise the local container, composed here so the password is written once.
+    # No `:?` inside the default on purpose: older Compose versions evaluate it even when DATABASE_URL is set. A missing
+    # POSTGRES_PASSWORD makes the db container refuse to start ("superuser password is not specified") - and install_vps.sh checks it.
+    DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-qrbot}:${POSTGRES_PASSWORD:-}@db:5432/${POSTGRES_DB:-qrbot}}
     PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
     ENVIRONMENT: production
     UPLOAD_DIR: /data/uploads

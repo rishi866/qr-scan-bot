@@ -82,7 +82,7 @@ docs/       guides
 ## Tests
 
 ```bash
-cd backend && pytest -q            # 257 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
+cd backend && pytest -q            # 258 tests against a real PostgreSQL + an in-memory EVM chain + a simulated Telegram
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
