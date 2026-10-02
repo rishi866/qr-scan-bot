@@ -13,7 +13,7 @@ admin.example.com {
 	}
 
 	handle /tz.html {
-		header Content-Security-Policy "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
+		header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
 		root * /opt/qr-scan-bot/frontend/out
 		file_server
 	}

@@ -306,7 +306,10 @@ async def test_security_headers_panel_is_unframeable_but_the_mini_app_may_be_fra
         mini = await c.get("/tz.html")
         assert mini.status_code == 200 and "mini app" in mini.text
         assert "x-frame-options" not in mini.headers  # DENY would blank the Mini App on Telegram Web
-        assert "https://web.telegram.org" in mini.headers["content-security-policy"]
+        csp = mini.headers["content-security-policy"]
+        assert "frame-ancestors https://web.telegram.org" in csp
+        # the page shares the panel's origin: it may load telegram.org's script but not talk to our API
+        assert "connect-src 'none'" in csp and "default-src 'none'" in csp and "script-src 'unsafe-inline' https://telegram.org" in csp
 
         api = await c.get("/api/health")
         assert api.headers["x-frame-options"] == "DENY" and api.headers["cache-control"] == "no-store"

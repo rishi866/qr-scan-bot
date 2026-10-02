@@ -61,9 +61,15 @@ PANEL_CSP = (
     "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
     "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )
-# The time-zone Mini App is opened inside Telegram (an iframe on Telegram Web), so it may only be framed by Telegram.
+# The time-zone Mini App is opened inside Telegram (an iframe on Telegram Web), so only Telegram may frame it, and it
+# loads telegram.org's bridge script. It shares the origin of the admin panel, so everything else is shut: even a
+# compromised script on this page could not call the admin API (connect-src 'none'), load frames or post forms.
 MINI_APP_PATHS = ("/tz.html", "/tz/")
-MINI_APP_CSP = "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
+MINI_APP_CSP = (
+    "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; connect-src 'none'; "
+    "img-src 'none'; form-action 'none'; base-uri 'none'; "
+    "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org https://*.telegram.org"
+)
 
 
 class SecurityHeaders(BaseHTTPMiddleware):

@@ -119,7 +119,7 @@ Every message to another person is first written to `outbox` in the **same trans
 | Area | Measures |
 |---|---|
 | Panel authentication | Argon2id passwords (≥ 12 chars, mixed, must not contain the username); JWT in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie; token versioning (password change signs out everything); lockout after 5 failures / 15 min; per-IP limiter; optional **TOTP 2FA** (secret encrypted with a key derived from `SECRET_KEY`, replay protection) |
-| Web hygiene | CSRF header required on every unsafe method; strict CSP (`default-src 'self'`), `X-Frame-Options: DENY` (the Mini App page may be framed by Telegram only), HSTS from Caddy, API docs disabled in production, proof images only for logged-in admins, CSV formula-injection guard |
+| Web hygiene | CSRF header required on every unsafe method; strict CSP (`default-src 'self'`), `X-Frame-Options: DENY`; the time-zone Mini App page (same origin, loads telegram.org's script) may be framed by Telegram only and has `connect-src 'none'`, so a compromised script there cannot reach the admin API, HSTS from Caddy, API docs disabled in production, proof images only for logged-in admins, CSV formula-injection guard |
 | Authorisation | all admin endpoints require a valid session; Telegram admin buttons check `ADMIN_TELEGRAM_IDS` |
 | Secrets | environment only (`deploy/.env`, mode 600); `SECRET_KEY` validated on start in production; HD wallet is **watch-only** by default; Binance key must be read-only (checked) |
 | Input | URLs are strictly validated (https, allow-listed domains); screenshots are decoded and re-encoded with Pillow (EXIF stripped, size/pixel limits); user text is HTML-escaped in every message; bot rate limiter per user |
